@@ -48,8 +48,9 @@ switch holding the configuration built over the previous evening.
 - ✅ `find_ambiguities` groups adapters that genuinely cannot be told apart —
   two no-serial Prolific clones — so a label can be refused rather than guessed.
 - 🔜 Low-confidence identity on a device about to be erased is refused.
-- 🔜 Destructive commands dry-run by default, naming the resolved device and
-  the evidence behind it.
+- ✅ A plan is checked and rendered without sending anything: `plan()` reports
+  what a playbook would destroy, and `execute()` refuses a destructive plan
+  without explicit confirmation.
 
 **Residual risk.** A device whose identity cannot be read before authentication
 can only be matched by port. The tool says so explicitly.
@@ -86,7 +87,10 @@ configuration — possibly the only record of how a just-bought device was set u
 - 🔜 Override requires `--accept-config-loss` plus a confirmation challenge
   built from the strongest independently observed attributes (§10.3 of the
   specification) — never a serial number the tool has admitted it cannot read.
-- 🔜 No step with destructive effect executes while the guard is reported.
+- ✅ No step with destructive effect executes while the guard is reported, and
+  the guard is re-checked **before every step** rather than only at plan time —
+  a device can announce recovery is disabled part-way through a boot, after the
+  plan was made and before the damaging step is reached.
 
 **Design note.** Revision 1 of the spec claimed any break permanently destroys
 the config. Cisco documents a confirmation path instead. Overstating a hazard
@@ -104,10 +108,16 @@ erased without being read — or worse, published.
 injured party, which is precisely why the tool must care.
 
 **Mitigations.**
-- 🔜 `archive` runs before `reset` by default; a bare `reset` on an unarchived
-  device warns and requires confirmation.
-- 🔜 Archive reports `PARTIAL` and names what it could not read, so the
-  confirmation prompt states what continuing may destroy.
+- ✅ `reset` is refused outright on a device that has not been archived, unless
+  the loss is accepted explicitly.
+- ✅ Archive reports `PARTIAL` and names every artifact it could not read, with
+  the reason and what continuing would cost. A `PARTIAL` archive does not block —
+  on a locked device it is the only possible outcome, and refusing would make the
+  tool useless for its main case — but the cost is forced into the confirmation.
+- ✅ Salvaged configuration is written with a warning header saying it may belong
+  to a previous owner, because the file outlives the moment and the context.
+- ✅ Cryptographic material is reported `unknown` rather than `absent`: not
+  knowing is different from knowing there is nothing there.
 - ✅ Salvaged configuration and raw recordings are gitignored by default.
 - ✅ No blanket sanitisation claim is made anywhere. NIST SP 800-88 sets a real
   bar and this tool does not clear it.
@@ -320,6 +330,10 @@ Each traceable to a hazard. ✅ is implemented and tested today.
 | Rollback compensates newest-first and reports what it cannot undo | T9 | ✅ |
 | At most one mutating session owns a transport path | T10 | ✅ |
 | A lease held by a dead process is reclaimed without manual intervention | T10 | ✅ |
-| No destructive step runs before `archive` completes | T4 | 🔜 |
+| No destructive step runs before `archive` completes | T4 | ✅ |
+| Every playbook step declares a precondition and an expectation | T1, T3 | ✅ |
+| A destructive step cannot be declared without its mutation | T3, T9 | ✅ |
+| The recovery guard is re-checked before every step, not only at plan time | T3 | ✅ |
+| A destructive plan refuses to run without explicit confirmation | T1, T4 | ✅ |
 | The only known-bootable image is never deleted without acknowledgement | T7, T9 | 🔜 |
 | No credential appears in any journal, result, bundle or log | T11 | ✅ |
