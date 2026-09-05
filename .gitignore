@@ -1,0 +1,28 @@
+# Raw transcripts are private by definition: they can contain a previous
+# owner's credentials, addressing and keys. Only scrubbed .ytx.pub fixtures
+# belong in the repository. CI enforces this too.
+*.ytx
+!*.ytx.pub
+
+# Salvaged configuration from second-hand gear is somebody else's network.
+archives/
+*.cfg.salvaged
+
+# Operational state: journals and transport leases.
+state.db
+state.db-wal
+state.db-shm
+locks/
+
+.venv/
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+htmlcov/
