@@ -17,12 +17,11 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from ciscoyoke import __version__, commands, doctor
+from ciscoyoke import __version__, cli_extra, commands, doctor
 from ciscoyoke.identify.probe import Intake, intake
 from ciscoyoke.result.exits import ExitCode
 from ciscoyoke.result.schema import Result
 from ciscoyoke.session import Session
-from ciscoyoke.topology import labfile
 from ciscoyoke.transcript import schema as transcript_schema
 from ciscoyoke.transcript import scrub as scrub_module
 from ciscoyoke.transport.identity import IdentityStrength, enumerate_ports
@@ -380,33 +379,6 @@ def cmd_recover_access(args: argparse.Namespace) -> int:
     return _run(run, args, "recover access")
 
 
-def cmd_lab_verify(args: argparse.Namespace) -> int:
-    lab = labfile.load(Path(args.labfile))
-    # Nothing is collected from devices yet, so the honest output is the
-    # declaration itself plus a statement that it was not checked.
-    lines = [f"Lab: {lab.name}", ""]
-    lines.extend(f"  declared  {link}" for link in lab.cabling)
-    lines += [
-        "",
-        f"{len(lab.cabling)} link(s) declared across {len(lab.devices)} device(s).",
-        "CDP collection is not yet wired to the CLI, so nothing was verified.",
-    ]
-    return _print(
-        Result(
-            "lab verify",
-            int(ExitCode.STATE_UNCERTAIN),
-            {
-                "lab": lab.name,
-                "devices": [d.name for d in lab.devices],
-                "declared_links": [str(link) for link in lab.cabling],
-                "verified": False,
-            },
-        ),
-        args.json,
-        "\n".join(lines),
-    )
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ciscoyoke",
@@ -422,8 +394,10 @@ def build_parser() -> argparse.ArgumentParser:
     doctor_parser = sub.add_parser("doctor", help="host serial and capability checks")
     doctor_parser.set_defaults(handler=cmd_doctor)
 
-    ports_parser = sub.add_parser("ports", help="adapter identity and stability")
+    ports_parser = sub.add_parser("ports", help="adapter identity and labels")
     ports_parser.set_defaults(handler=cmd_ports)
+    ports_sub = ports_parser.add_subparsers(dest="subcommand")
+    cli_extra.register_labels(ports_sub)
 
     scan_parser = sub.add_parser(
         "scan", help="identify every attached device (read-only)"
@@ -481,13 +455,13 @@ def build_parser() -> argparse.ArgumentParser:
     access_parser.add_argument("port")
     access_parser.add_argument("--baud", type=int, default=DEFAULT_BAUD)
     access_parser.add_argument("--confirm", action="store_true")
-    access_parser.set_defaults(handler=cmd_recover_access)
+    access_parser.add_argument("--archive-to", help="write the archive bundle here")
+    access_parser.set_defaults(handler=cli_extra.cmd_recover_access_interactive)
+    cli_extra.register_recover_image(recover_sub)
 
     lab_parser = sub.add_parser("lab", help="physical lab topology")
     lab_sub = lab_parser.add_subparsers(dest="subcommand", required=True)
-    verify_parser = lab_sub.add_parser("verify", help="check cabling against a lab file")
-    verify_parser.add_argument("labfile")
-    verify_parser.set_defaults(handler=cmd_lab_verify)
+    cli_extra.register_lab(lab_sub)
 
     transcript_parser = sub.add_parser("transcript", help="transcript utilities")
     transcript_sub = transcript_parser.add_subparsers(dest="subcommand", required=True)
@@ -497,6 +471,8 @@ def build_parser() -> argparse.ArgumentParser:
     scrub_parser.add_argument("path", help="raw .ytx transcript")
     scrub_parser.add_argument("-o", "--output", help="destination (default: <path>.pub)")
     scrub_parser.set_defaults(handler=cmd_transcript_scrub)
+
+    cli_extra.register(sub)
 
     return parser
 

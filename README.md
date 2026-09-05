@@ -55,11 +55,18 @@ Destructive — leased, journalled, dry-run by default, `--confirm` required:
 | `ciscoyoke reset PORT` | erase to a known-empty baseline |
 | `ciscoyoke recover access PORT` | platform-aware password recovery |
 
-Two things are built and tested but not yet reachable from the CLI: interactive
-recovery, because it needs a human step driven through a live terminal, and CDP
-collection for `lab verify`, which parses and diffs but has nothing wired to
-gather from devices yet. Both say so when you run them rather than pretending
-otherwise.
+| `ciscoyoke recover image PORT --image F` | XMODEM rescue for a device with no bootable image |
+| `ciscoyoke lab apply LABFILE` | push per-device configuration |
+| `ciscoyoke login PORT` | authenticate with credentials you already have |
+
+Plus `ciscoyoke console`, `ciscoyoke resolve` (reconcile an interrupted
+recovery against the device) and `ciscoyoke support-bundle`.
+
+**One thing is deliberately not implemented: TFTP image delivery.** The provider,
+the constraints and the ROMMON variable generation all exist, but the command
+does not collect the addressing a ROMMON TFTP boot needs, so `--via tftp` refuses
+with an explanation rather than half-configuring a device. `--via xmodem` is the
+working path.
 
 ## Hardware support
 
