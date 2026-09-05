@@ -228,13 +228,24 @@ describe, and a second run that probes at the wrong speed and concludes the
 device is dead.
 
 **Mitigations.**
-- 🔜 Every mutation declares a reversibility class before it is attempted;
-  reversible ones carry a compensation, irreversible ones declare that none
-  exists and must pass their guard.
-- 🔜 Write-ahead journal on SQLite: intent is recorded durably, the action is
-  performed, reality is observed, and only then is the result committed.
-- 🔜 After an interruption, an `ATTEMPTED` entry is a question, not a fact —
-  resolved by probing the device, including at the journalled baud.
+- ✅ Every mutation declares a reversibility class **in its constructor**, so an
+  unsafe one cannot be built: a reversible or compensatable mutation without a
+  compensation raises, and an irreversible one that fails to name its guard
+  raises. An irreversible mutation that *claims* a compensation also raises —
+  that promise is the one the earlier design got wrong.
+- ✅ Write-ahead journal on WAL-mode SQLite with `synchronous=FULL`: intent is
+  durable before anything is sent, and survives a process that dies mid-write.
+- ✅ Leaving the `attempting()` block does **not** mark a mutation applied. It
+  stays `ATTEMPTED` until the device is observed, because the sending code
+  returning proves only that bytes left the host.
+- ✅ Reconciliation resolves each unresolved entry by probing, promoting it to
+  `OBSERVED_APPLIED` or demoting it to `FAILED`. Where the journal and the
+  device disagree, the device wins.
+- ✅ `INDETERMINATE` is a permitted answer and **blocks automatic resume**. A
+  prober forced to choose applied-or-not would manufacture exactly the certainty
+  this mechanism exists to avoid.
+- ✅ Rollback compensates newest-first, and returns the irreversible mutations
+  it could not undo rather than implying a full restore.
 
 ---
 
@@ -247,10 +258,18 @@ holding the port.
 what was done — corruption of exactly the state that makes T9 recoverable.
 
 **Mitigations.**
-- 🔜 A lease is taken before any stateful operation, keyed on transport identity
-  rather than port name, so two labels resolving to one adapter collide.
-- 🔜 A lease held by a dead process is reclaimed automatically; a crash must not
-  require manual unlocking.
+- ✅ A lease keyed on **transport identity**, not port name, so two labels
+  resolving to one adapter collide correctly.
+- ✅ Exclusivity does not depend on PID: two `Lease` objects in one process is
+  the double-open bug this exists to catch, so a same-PID holder blocks like any
+  other. Re-entrancy belongs to the object, not the process.
+- ✅ Claims are taken with `O_EXCL`, so two processes racing between check and
+  write cannot both succeed.
+- ✅ A lease held by a dead process is reclaimed automatically, and a corrupt
+  lock file is not treated as a valid claim. A crash never requires manual
+  unlocking — otherwise people learn to delete lock files, at exactly the wrong
+  moment.
+- ✅ Releasing only ever removes our own claim.
 
 ---
 
@@ -262,12 +281,18 @@ history, process listings and any support bundle capturing the invocation.
 **Impact.** Credential disclosure through a channel nobody was watching.
 
 **Mitigations.**
-- 🔜 No `--password` flag will exist. Interactive entry via `getpass`;
-  `--password-stdin` for automation.
-- 🔜 Credentials never reach a journal, a JSON result, an exception string, a
-  log event or a support bundle, asserted by a sentinel-credential property
-  test.
-- ✅ The recorder already refuses to store a credential it is told about.
+- ✅ No `--password` flag exists, and none will. Interactive entry via
+  `getpass`; `--password-stdin` for automation, because a pipe reaches neither
+  the process table nor the shell history.
+- ✅ `Secret` refuses to render itself through `__repr__`, `__str__` or
+  `__format__`, which covers the paths credentials actually escape by —
+  f-strings, `print`, `logging`, exception messages. Reaching the plaintext
+  requires `reveal()`, which is greppable and reviewable.
+- ✅ `len()` returns the marker's length, so it cannot leak the real one.
+- ✅ Asserted end to end with a sentinel credential driven through a transcript,
+  a journal database (checked at the raw byte level), a JSON result, log records
+  and an exception message.
+- ✅ The recorder refuses to store a credential it is told about.
 
 ---
 
@@ -288,9 +313,13 @@ Each traceable to a hazard. ✅ is implemented and tested today.
 | Indistinguishable adapters are reported, never disambiguated by guess | T1 | ✅ |
 | A playbook needing an unavailable capability fails at plan time | T3, T9 | ✅ |
 | Diagnostics never recommend running elevated | T7 | ✅ |
-| Every mutation declares a reversibility class before it is attempted | T9 | 🔜 |
-| No `ATTEMPTED` journal entry is treated as fact without observation | T9 | 🔜 |
-| At most one mutating session owns a transport path | T10 | 🔜 |
+| Every mutation declares a reversibility class before it is attempted | T9 | ✅ |
+| No `ATTEMPTED` journal entry is treated as fact without observation | T9 | ✅ |
+| An indeterminate mutation blocks automatic resume | T9 | ✅ |
+| Reconciliation is idempotent: resuming twice equals resuming once | T9 | ✅ |
+| Rollback compensates newest-first and reports what it cannot undo | T9 | ✅ |
+| At most one mutating session owns a transport path | T10 | ✅ |
+| A lease held by a dead process is reclaimed without manual intervention | T10 | ✅ |
 | No destructive step runs before `archive` completes | T4 | 🔜 |
 | The only known-bootable image is never deleted without acknowledgement | T7, T9 | 🔜 |
-| No credential appears in any journal, result, bundle or log | T11 | 🔜 |
+| No credential appears in any journal, result, bundle or log | T11 | ✅ |
