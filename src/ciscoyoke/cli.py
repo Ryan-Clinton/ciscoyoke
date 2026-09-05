@@ -3,24 +3,26 @@
 Every command supports ``--json`` and returns a documented exit code, so this
 is usable from a shell script or CI as well as by a person.
 
-Only the P0 read-only commands are implemented so far -- ``doctor``, ``ports``
-and ``transcript scrub``. Nothing here can change a device, which is why none
-of it needs the confirmation machinery yet. Commands that will mutate hardware
-land with the journal and the lease, not before.
+Commands divide sharply. ``doctor``, ``ports``, ``scan``, ``intake``, ``rescue``,
+``health`` and ``archive`` change nothing, so they are safe to point at hardware
+in unknown condition. ``reset`` and ``recover`` can destroy things, so they take
+a transport lease, journal every mutation, dry-run by default, and require
+``--confirm`` before a single byte is sent.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from ciscoyoke import __version__, doctor
+from ciscoyoke import __version__, commands, doctor
 from ciscoyoke.identify.probe import Intake, intake
 from ciscoyoke.result.exits import ExitCode
 from ciscoyoke.result.schema import Result
 from ciscoyoke.session import Session
+from ciscoyoke.topology import labfile
 from ciscoyoke.transcript import schema as transcript_schema
 from ciscoyoke.transcript import scrub as scrub_module
 from ciscoyoke.transport.identity import IdentityStrength, enumerate_ports
@@ -280,6 +282,131 @@ def cmd_scan(args: argparse.Namespace) -> int:
     )
 
 
+def _run(
+    handler: Callable[[], int], args: argparse.Namespace, command: str
+) -> int:
+    """Call a command implementation, mapping its failure to an exit code."""
+    try:
+        return handler()
+    except commands.CommandError as exc:
+        if args.json:
+            print(Result(command, int(exc.code), {"error": str(exc)}).render())
+        else:
+            print(f"error: {exc}", file=sys.stderr)
+        return int(exc.code)
+
+
+def cmd_rescue(args: argparse.Namespace) -> int:
+    def run() -> int:
+        report = commands.do_rescue(args.port, args.baud)
+        return _print(
+            Result("rescue", int(ExitCode.SUCCESS), report.to_json()),
+            args.json,
+            report.render(),
+        )
+
+    return _run(run, args, "rescue")
+
+
+def cmd_health(args: argparse.Namespace) -> int:
+    def run() -> int:
+        payload, code = commands.do_health(args.port, args.baud)
+        lines = [f"Overall health: {payload.get('overall')}"]
+        checks = payload.get("checks")
+        if isinstance(checks, list):
+            lines.extend(
+                f"  {c['health']:<8} {c['check']:<20} {c['detail']}"
+                for c in checks
+            )
+        return _print(
+            Result("health", int(code), payload), args.json, "\n".join(lines)
+        )
+
+    return _run(run, args, "health")
+
+
+def cmd_archive(args: argparse.Namespace) -> int:
+    def run() -> int:
+        outcome = commands.do_archive(
+            args.port, Path(args.output) if args.output else None, args.baud
+        )
+        human = outcome.rendered
+        if outcome.directory:
+            human += f"\n\nWritten: {outcome.directory}"
+        return _print(
+            Result(
+                "archive",
+                int(ExitCode.SUCCESS),
+                {
+                    "status": outcome.status,
+                    "gaps": list(outcome.gaps),
+                    "directory": str(outcome.directory) if outcome.directory else None,
+                },
+            ),
+            args.json,
+            human,
+        )
+
+    return _run(run, args, "archive")
+
+
+def cmd_reset(args: argparse.Namespace) -> int:
+    def run() -> int:
+        rendered, code = commands.do_reset(
+            args.port,
+            baud=args.baud,
+            confirm=args.confirm,
+            accept_config_loss=args.accept_config_loss,
+            archive_to=Path(args.archive_to) if args.archive_to else None,
+        )
+        return _print(
+            Result("reset", int(code), {"confirmed": args.confirm}), args.json, rendered
+        )
+
+    return _run(run, args, "reset")
+
+
+def cmd_recover_access(args: argparse.Namespace) -> int:
+    def run() -> int:
+        rendered, code = commands.do_recover_access(
+            args.port, baud=args.baud, confirm=args.confirm
+        )
+        return _print(
+            Result("recover access", int(code), {"confirmed": args.confirm}),
+            args.json,
+            rendered,
+        )
+
+    return _run(run, args, "recover access")
+
+
+def cmd_lab_verify(args: argparse.Namespace) -> int:
+    lab = labfile.load(Path(args.labfile))
+    # Nothing is collected from devices yet, so the honest output is the
+    # declaration itself plus a statement that it was not checked.
+    lines = [f"Lab: {lab.name}", ""]
+    lines.extend(f"  declared  {link}" for link in lab.cabling)
+    lines += [
+        "",
+        f"{len(lab.cabling)} link(s) declared across {len(lab.devices)} device(s).",
+        "CDP collection is not yet wired to the CLI, so nothing was verified.",
+    ]
+    return _print(
+        Result(
+            "lab verify",
+            int(ExitCode.STATE_UNCERTAIN),
+            {
+                "lab": lab.name,
+                "devices": [d.name for d in lab.devices],
+                "declared_links": [str(link) for link in lab.cabling],
+                "verified": False,
+            },
+        ),
+        args.json,
+        "\n".join(lines),
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ciscoyoke",
@@ -313,6 +440,54 @@ def build_parser() -> argparse.ArgumentParser:
     intake_parser.add_argument("port", help="serial port, e.g. COM3 or /dev/ttyUSB0")
     intake_parser.add_argument("--baud", type=int, default=DEFAULT_BAUD)
     intake_parser.set_defaults(handler=cmd_intake)
+
+    rescue_parser = sub.add_parser(
+        "rescue", help="diagnose, preserve and recommend (read-only)"
+    )
+    rescue_parser.add_argument("port")
+    rescue_parser.add_argument("--baud", type=int, default=DEFAULT_BAUD)
+    rescue_parser.set_defaults(handler=cmd_rescue)
+
+    health_parser = sub.add_parser("health", help="POST, flash and memory checks")
+    health_parser.add_argument("port")
+    health_parser.add_argument("--baud", type=int, default=DEFAULT_BAUD)
+    health_parser.set_defaults(handler=cmd_health)
+
+    archive_parser = sub.add_parser(
+        "archive", help="preserve what the device will disclose"
+    )
+    archive_parser.add_argument("port")
+    archive_parser.add_argument("-o", "--output", help="directory for the bundle")
+    archive_parser.add_argument("--baud", type=int, default=DEFAULT_BAUD)
+    archive_parser.set_defaults(handler=cmd_archive)
+
+    reset_parser = sub.add_parser("reset", help="erase to a known-empty baseline")
+    reset_parser.add_argument("port")
+    reset_parser.add_argument("--baud", type=int, default=DEFAULT_BAUD)
+    reset_parser.add_argument(
+        "--confirm", action="store_true", help="actually perform the reset"
+    )
+    reset_parser.add_argument(
+        "--accept-config-loss",
+        action="store_true",
+        help="proceed even though preservation captured nothing",
+    )
+    reset_parser.add_argument("--archive-to", help="write the archive bundle here")
+    reset_parser.set_defaults(handler=cmd_reset)
+
+    recover_parser = sub.add_parser("recover", help="access and image recovery")
+    recover_sub = recover_parser.add_subparsers(dest="subcommand", required=True)
+    access_parser = recover_sub.add_parser("access", help="password recovery")
+    access_parser.add_argument("port")
+    access_parser.add_argument("--baud", type=int, default=DEFAULT_BAUD)
+    access_parser.add_argument("--confirm", action="store_true")
+    access_parser.set_defaults(handler=cmd_recover_access)
+
+    lab_parser = sub.add_parser("lab", help="physical lab topology")
+    lab_sub = lab_parser.add_subparsers(dest="subcommand", required=True)
+    verify_parser = lab_sub.add_parser("verify", help="check cabling against a lab file")
+    verify_parser.add_argument("labfile")
+    verify_parser.set_defaults(handler=cmd_lab_verify)
 
     transcript_parser = sub.add_parser("transcript", help="transcript utilities")
     transcript_sub = transcript_parser.add_subparsers(dest="subcommand", required=True)

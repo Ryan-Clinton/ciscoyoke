@@ -75,6 +75,16 @@ class Session:
     # -- accessors ---------------------------------------------------------
 
     @property
+    def transport(self) -> Transport:
+        """The underlying endpoint.
+
+        Exposed because a few operations are genuinely transport-level rather
+        than stream-level -- asserting a break, changing line speed -- and those
+        need the transport itself, not the byte stream over it.
+        """
+        return self._transport
+
+    @property
     def tracker(self) -> StateTracker:
         return self._tracker
 

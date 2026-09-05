@@ -33,7 +33,9 @@ netmiko, and it is not trying to be ConsolePi.
 
 ## Status
 
-**Pre-alpha.** The read-only half of P0 is implemented and tested:
+**Pre-alpha, but feature-complete against [the specification](docs/SPEC.md).**
+
+Read-only — safe against hardware in unknown condition:
 
 | | |
 | --- | --- |
@@ -41,16 +43,23 @@ netmiko, and it is not trying to be ConsolePi.
 | `ciscoyoke ports` | USB adapter identity and how stable it is |
 | `ciscoyoke scan` | identify every attached device, passively |
 | `ciscoyoke intake PORT` | identify one device without changing it |
+| `ciscoyoke rescue PORT` | **the front door** — diagnose, preserve, recommend |
+| `ciscoyoke health PORT` | POST, flash, memory and config-register checks |
+| `ciscoyoke archive PORT` | preserve what the device will disclose |
 | `ciscoyoke transcript scrub` | raw recording → shareable fixture |
 
-**Nothing yet writes to a device.** `intake` reads, listens, and at most sends a
-bare carriage return to wake a silent console; it never changes configuration.
-The commands that mutate hardware — `archive`, `recover`, `reset`, `rescue` —
-land with the recovery journal and the transport lease, and not before. So do
-image rescue and the lab topology verbs.
+Destructive — leased, journalled, dry-run by default, `--confirm` required:
 
-Roughly a third of [the specification](docs/SPEC.md) is built. The unbuilt part
-is deliberately the part that can break a device.
+| | |
+| --- | --- |
+| `ciscoyoke reset PORT` | erase to a known-empty baseline |
+| `ciscoyoke recover access PORT` | platform-aware password recovery |
+
+Two things are built and tested but not yet reachable from the CLI: interactive
+recovery, because it needs a human step driven through a live terminal, and CDP
+collection for `lab verify`, which parses and diffs but has nothing wired to
+gather from devices yet. Both say so when you run them rather than pretending
+otherwise.
 
 ## Hardware support
 

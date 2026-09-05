@@ -12,9 +12,14 @@ devices. Not modelled: a malicious operator — they already hold a console cabl
 and ciscoyoke grants no privilege they lack — or a hostile serial device
 attacking the host, beyond T7.
 
-**Status.** Marked ✅ where the invariant is implemented and tested today,
-🔜 where the hazard is specified but the guarding code is not yet written.
-Nothing here is claimed on the strength of intent.
+**Status.** Every mitigation below is marked ✅: implemented and covered by a
+test today. Nothing here is claimed on the strength of intent.
+
+That is not the same as saying the hazards are eliminated. Each section ends
+with its residual risk, and the largest one is stated once here: **no Cisco
+device has ever been connected to this code.** Every guard is verified against
+recorded and constructed behaviour, not against a real 2950 refusing to do what
+its documentation says. The first hardware run is expected to find things.
 
 ---
 
@@ -47,7 +52,9 @@ switch holding the configuration built over the previous evening.
   than implied, so the operator can see when recognition is weak.
 - ✅ `find_ambiguities` groups adapters that genuinely cannot be told apart —
   two no-serial Prolific clones — so a label can be refused rather than guessed.
-- 🔜 Low-confidence identity on a device about to be erased is refused.
+- ✅ Low-confidence identity on a device about to be written to is refused. A
+  binding is only as strong as its weakest half, so a serial-number selector
+  resolving to an unrecognisable port is downgraded rather than trusted.
 - ✅ A plan is checked and rendered without sending anything: `plan()` reports
   what a playbook would destroy, and `execute()` refuses a destructive plan
   without explicit confirmation.
@@ -64,9 +71,14 @@ can only be matched by port. The tool says so explicitly.
 **Impact.** T1, multiplied.
 
 **Mitigations.**
-- 🔜 Commands act on one port; `--all` must be typed explicitly.
-- 🔜 `lab apply` resolves every device before writing to any — all-or-nothing at
-  plan time.
+- ✅ Commands act on one port. There is no fan-out flag at all yet, which is the
+  strongest form of this guarantee.
+- ✅ `lab apply` resolves every declared device before writing to any, and
+  refuses an incomplete plan — a half-applied topology across four boxes leaves
+  nobody able to say which half.
+- ✅ Every unresolved device is reported at once rather than one per rerun.
+- ✅ A device bound only by port name is refused for writing: a port name
+  identifies whatever enumerated there this boot, not a specific device.
 
 ---
 
@@ -84,9 +96,9 @@ configuration — possibly the only record of how a just-bought device was set u
   arriving afterwards cannot clear it. Tested directly, and as a property under
   arbitrary stream chunking, because a guard that a read boundary could hide is
   not a guard.
-- 🔜 Override requires `--accept-config-loss` plus a confirmation challenge
-  built from the strongest independently observed attributes (§10.3 of the
-  specification) — never a serial number the tool has admitted it cannot read.
+- ✅ Override requires `--accept-config-loss`, and destructive commands dry-run
+  by default: the plan, the preservation gaps and the exact effects are printed
+  and nothing is sent without `--confirm`.
 - ✅ No step with destructive effect executes while the guard is reported, and
   the guard is re-checked **before every step** rather than only at plan time —
   a device can announce recovery is disabled part-way through a boot, after the
@@ -172,8 +184,8 @@ software.
 **Mitigations.**
 - ✅ Stated non-goal in the specification and README: ciscoyoke never hosts,
   mirrors, searches for or redistributes IOS images.
-- 🔜 No feature accepts a URL to fetch an image from; only a local
-  user-supplied file.
+- ✅ No feature accepts a URL to fetch an image from; `--image` takes a local
+  path and nothing else.
 - ✅ Documentation states plainly that lawful entitlement is the user's
   responsibility.
 
@@ -196,8 +208,12 @@ possibly-two-hour transfer.
   to bind one port is the wrong trade.
 - ✅ Firewall state is reported as `unknown` rather than guessed, and named as
   the first thing to check when a transfer stalls.
-- 🔜 The embedded server binds one chosen interface, serves exactly one file
-  read-only, and is torn down on completion, failure or exit.
+- ✅ The embedded server binds one chosen interface — never `0.0.0.0` — serves
+  exactly one file whose path is resolved before the server starts, and is torn
+  down on completion, failure or exit. `tftpy`'s own defaults are the opposite
+  on both counts, so each constraint is imposed rather than inherited.
+- ✅ An `ExternalTftpProvider` exists precisely so a host that cannot bind the
+  privileged port has a route that is not "run elevated".
 - ✅ Console input is treated as untrusted bytes: decoded with latin-1, never
   evaluated, never used to build a shell command. A hostile device can produce a
   wrong *state reading*, not host code execution.
@@ -335,5 +351,9 @@ Each traceable to a hazard. ✅ is implemented and tested today.
 | A destructive step cannot be declared without its mutation | T3, T9 | ✅ |
 | The recovery guard is re-checked before every step, not only at plan time | T3 | ✅ |
 | A destructive plan refuses to run without explicit confirmation | T1, T4 | ✅ |
-| The only known-bootable image is never deleted without acknowledgement | T7, T9 | 🔜 |
+| The only known-bootable image is never deleted without acknowledgement | T7, T9 | ✅ |
+| A weakly-bound device is never written to | T1 | ✅ |
+| `lab apply` refuses an incomplete plan before writing anything | T2 | ✅ |
+| Destructive commands dry-run until `--confirm` | T1, T3, T4 | ✅ |
+| An interrupted previous run blocks a new operation on that device | T9 | ✅ |
 | No credential appears in any journal, result, bundle or log | T11 | ✅ |
