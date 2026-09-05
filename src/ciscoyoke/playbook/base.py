@@ -88,6 +88,24 @@ class Step:
     requires_capabilities: tuple[str, ...] = ()
     timeout: float = 30.0
     description: str = ""
+    optional: bool = False
+    """Skip rather than fail when the precondition is not met.
+
+    For genuinely conditional prompts. `reload` asks whether to save only when
+    the running configuration differs from the startup one, so a step answering
+    that question must tolerate its absence -- without loosening its
+    precondition to accept states it would answer wrongly.
+    """
+
+    requires_fresh_evidence: bool = True
+    """Whether reaching ``expect`` must be proven by output arriving *after*
+    the action.
+
+    Default on. Without it a step that begins in a state also listed in
+    ``expect`` succeeds on the state it started in, having proven nothing about
+    whether the device reacted -- which is the same stale-evidence mistake the
+    baud restoration made, in the general case.
+    """
 
     def __post_init__(self) -> None:
         if not self.expect:
@@ -267,6 +285,11 @@ def execute(
             )
 
         if current not in step.require_state:
+            if step.optional:
+                # A conditional prompt that did not appear. Skipping is the
+                # right answer; forcing the step would send an answer to a
+                # question nobody asked.
+                continue
             raise StepFailedError(step, current, "precondition not met")
 
         if step.mutation is None:
@@ -287,9 +310,24 @@ def execute(
 
 
 def _run(step: Step, session: Session) -> None:
+    """Perform a step and require the device to have actually reacted.
+
+    ``wait_for`` checks the current state before reading anything, so a step
+    beginning in a state that also appears in ``expect`` would return
+    immediately, having proven nothing. That is stale evidence, and it is the
+    general form of the bug the baud restoration had: the difference between
+    "the device is where I want it" and "the device went there because of what
+    I did".
+
+    Marking the stream position first and requiring the conclusion to rest on
+    bytes arriving after it closes that.
+    """
+    mark = len(session.tracker.buffer) if step.requires_fresh_evidence else None
+
     step.action(session)
+
     try:
-        session.wait_for(step.expect, timeout=step.timeout)
+        session.wait_for(step.expect, timeout=step.timeout, after_offset=mark)
     except SessionTimeoutError as exc:
         raise StepFailedError(step, session.state.state, str(exc)) from exc
 

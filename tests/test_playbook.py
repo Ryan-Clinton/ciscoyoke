@@ -66,6 +66,30 @@ def journal_for(connection: sqlite3.Connection) -> Journal:
     )
 
 
+def responding_session(
+    initial: bytes, reply: bytes
+) -> tuple[Session, FakeDevice]:
+    """A session already at ``initial`` whose device answers with ``reply``.
+
+    Needed now that steps require evidence arriving *after* the action: a fake
+    device that says nothing cannot prove the device did anything.
+    """
+    from ciscoyoke.transcript.schema import Direction, Record
+
+    device = FakeDevice(
+        Transcript(records=(Record(0.0, Direction.RX, reply),)), strict=False
+    )
+    tracker = StateTracker()
+    tracker.feed(initial)
+    session = Session(
+        FakeTransport(device),
+        tracker=tracker,
+        clock=device.monotonic,
+        sleep=device.sleeper(),
+    )
+    return session, device
+
+
 def session_at(state_text: bytes) -> tuple[Session, FakeDevice]:
     """A session whose tracker has already reached a given state."""
     device = FakeDevice(Transcript(records=()), strict=False)
@@ -227,9 +251,39 @@ def test_a_step_whose_precondition_fails_stops_the_run(db: sqlite3.Connection) -
         execute(checked, session, journal_for(db), confirm=True)
 
 
+def test_a_step_must_prove_the_device_reacted(db: sqlite3.Connection) -> None:
+    """Starting in a state that is also expected proves nothing.
+
+    wait_for used to check the current state before reading, so a step could
+    return immediately on the state it began in. That is the general form of
+    the stale-evidence bug found in baud restoration.
+    """
+    session, _ = session_at(b"\r\nRouter#")
+    transport = StubTransport("COM3", TransportCapabilities.local_serial())
+
+    book = Playbook(
+        name="silent_device",
+        steps=(
+            Step(
+                name="erase",
+                require_state=(State.PRIV_EXEC,),
+                expect=(State.PRIV_EXEC,),
+                action=send_line(b"write erase\r"),
+                effect=Effect.DESTRUCTIVE,
+                mutation=model.write_erase(guard=reset.ACCEPT_CONFIG_LOSS),
+                timeout=0.2,
+            ),
+        ),
+    )
+    checked = plan(book, transport, State.PRIV_EXEC)
+
+    with pytest.raises(StepFailedError):
+        execute(checked, session, journal_for(db), confirm=True)
+
+
 def test_a_successful_step_journals_its_mutation(db: sqlite3.Connection) -> None:
     """Execution and the journal are not two bookkeeping systems."""
-    session, _ = session_at(b"\r\nRouter#")
+    session, _ = responding_session(b"\r\nRouter#", b"\r\nRouter#")
     transport = StubTransport("COM3", TransportCapabilities.local_serial())
 
     book = Playbook(

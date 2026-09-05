@@ -24,7 +24,7 @@ from ciscoyoke.journal.store import connect, find_interrupted
 from ciscoyoke.result.exits import ExitCode
 from ciscoyoke.transport import labels
 from ciscoyoke.transport.identity import enumerate_ports
-from ciscoyoke.transport.serial_ import CANDIDATE_BAUDS, DEFAULT_BAUD
+from ciscoyoke.transport.serial_ import CANDIDATE_BAUDS
 
 BUNDLE_NOTES = """ciscoyoke support bundle
 
@@ -206,45 +206,6 @@ def _compensate(port: str, mutation: Mutation) -> bool:
             return bool(session.tracker.buffer)
     except CommandError:
         return False
-
-
-# -- interactive console ----------------------------------------------------
-
-
-def do_console(port: str, baud: int = DEFAULT_BAUD, record: Path | None = None) -> int:
-    """Interactive passthrough with recording.
-
-    Deliberately minimal and honest about it: a full terminal emulator with raw
-    key handling is a project of its own, and PuTTY or ``screen`` already do it
-    well. What this adds is the recording -- a session captured in the
-    transcript format the rest of the tool replays, so a problem seen by hand
-    becomes a fixture.
-    """
-    from ciscoyoke.transcript import schema as transcript_schema
-
-    with device_session(port, baud) as session:
-        print(f"Connected to {port} at {baud}. Ctrl-C to exit.")
-        print("Recording..." if record else "Not recording (pass --record FILE).")
-        try:
-            while True:
-                data = session.pump()
-                if data:
-                    sys.stdout.write(data.decode("latin-1"))
-                    sys.stdout.flush()
-                line = sys.stdin.readline()
-                if not line:
-                    break
-                session.send(line.rstrip("\n").encode("latin-1") + b"\r")
-        except KeyboardInterrupt:
-            print("\nDisconnected.")
-        finally:
-            if record:
-                transcript_schema.write(record, session.recorder.transcript())
-                print(f"Raw transcript written to {record}")
-                print("It is private by default. Scrub it before sharing:")
-                print(f"  ciscoyoke transcript scrub {record}")
-
-    return int(ExitCode.SUCCESS)
 
 
 def sweep_bauds() -> tuple[int, ...]:

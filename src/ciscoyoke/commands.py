@@ -178,6 +178,7 @@ def do_reset(
     confirm: bool = False,
     accept_config_loss: bool = False,
     archive_to: Path | None = None,
+    platform: str | None = None,
 ) -> tuple[str, ExitCode]:
     """Reset a device to a known-empty baseline.
 
@@ -204,7 +205,16 @@ def do_reset(
                 ExitCode.DESTRUCTIVE_ACTION_REFUSED,
             )
 
-        book = reset_module.for_model(found.facts.model.value)
+        try:
+            book = reset_module.for_model(
+                found.facts.model.value, platform=platform
+            )
+        except reset_module.PlatformUnknownError as exc:
+            # A refusal, not a crash. This is the safety path: letting it
+            # escape as a traceback would be the worst possible ending for the
+            # one branch that exists to stop a wrong guess.
+            raise CommandError(str(exc), ExitCode.STATE_UNCERTAIN) from exc
+
         checked = plan(book, session.transport, session.state.state)
         if not checked.safe:
             raise CommandError(

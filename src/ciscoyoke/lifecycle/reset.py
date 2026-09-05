@@ -172,10 +172,19 @@ def _reload_steps() -> tuple[Step, ...]:
         Step(
             name="decline_save",
             description="decline saving (it would undo the erase)",
-            require_state=(State.SAVE_CONFIG_PROMPT, State.CONFIRM),
+            # Only the save question. An earlier version accepted CONFIRM here
+            # too and answered it with "no" -- but "Proceed with reload?
+            # [confirm]" is a different transition that wants a bare return,
+            # and sending "no" to it is at best ignored and at worst read as
+            # cancelling the reload.
+            #
+            # This is the limit of `tuple[allowed states]`: it works only where
+            # the same action is right for every one of them.
+            require_state=(State.SAVE_CONFIG_PROMPT,),
             expect=(State.CONFIRM, State.BOOTING),
             action=send_line(b"no\r"),
             timeout=60.0,
+            optional=True,
         ),
         Step(
             name="confirm_reload",

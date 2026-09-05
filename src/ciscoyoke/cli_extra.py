@@ -13,7 +13,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from ciscoyoke import imaging, interactive, labs, support
+from ciscoyoke import capturing, imaging, interactive, labs, support
 from ciscoyoke.commands import CommandError
 from ciscoyoke.playbook.transfer import Progress
 from ciscoyoke.result.exits import ExitCode
@@ -188,13 +188,42 @@ def cmd_ports_list_labels(args: argparse.Namespace) -> int:
 
 def cmd_console(args: argparse.Namespace) -> int:
     def run() -> int:
-        return support.do_console(
+        return capturing.do_console(
             target(args.port),
             args.baud,
             Path(args.record) if args.record else None,
         )
 
     return _guard(run, args, "console")
+
+
+def cmd_capture(args: argparse.Namespace) -> int:
+    """Listen and record. The safest thing to point at unknown hardware."""
+
+    def run() -> int:
+        rendered, payload, code = capturing.do_capture(
+            target(args.port),
+            Path(args.output),
+            baud=args.baud,
+            duration=args.duration,
+            quiet_after=None if args.wait else args.quiet_after,
+            echo=not args.no_echo,
+        )
+        return _emit(Result("capture", int(code), payload), args.json, rendered)
+
+    return _guard(run, args, "capture")
+
+
+def cmd_sweep(args: argparse.Namespace) -> int:
+    """Find the line speed by listening at each candidate rate."""
+
+    def run() -> int:
+        rendered, payload, code = capturing.do_sweep(
+            target(args.port), seconds=args.seconds
+        )
+        return _emit(Result("sweep", int(code), payload), args.json, rendered)
+
+    return _guard(run, args, "sweep")
 
 
 def cmd_support_bundle(args: argparse.Namespace) -> int:
@@ -267,6 +296,40 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     console.add_argument("--baud", type=int, default=DEFAULT_BAUD)
     console.add_argument("--record", help="write a raw transcript here")
     console.set_defaults(handler=cmd_console)
+
+    capture = sub.add_parser(
+        "capture", help="listen and record without transmitting anything"
+    )
+    capture.add_argument("port")
+    capture.add_argument("-o", "--output", required=True, help="raw .ytx to write")
+    capture.add_argument("--baud", type=int, default=DEFAULT_BAUD)
+    capture.add_argument(
+        "--duration", type=float, help="stop after this many seconds"
+    )
+    capture.add_argument(
+        "--quiet-after",
+        type=float,
+        default=5.0,
+        help="stop once the device has been silent this long (default 5s)",
+    )
+    capture.add_argument(
+        "--wait",
+        action="store_true",
+        help="never stop on silence -- wait for a power-cycle, Ctrl-C to end",
+    )
+    capture.add_argument(
+        "--no-echo", action="store_true", help="do not display output live"
+    )
+    capture.set_defaults(handler=cmd_capture)
+
+    sweep = sub.add_parser(
+        "sweep", help="find the line speed by listening at each candidate rate"
+    )
+    sweep.add_argument("port")
+    sweep.add_argument(
+        "--seconds", type=float, default=3.0, help="listen time per rate"
+    )
+    sweep.set_defaults(handler=cmd_sweep)
 
     bundle = sub.add_parser(
         "support-bundle", help="collect diagnostics for a bug report"

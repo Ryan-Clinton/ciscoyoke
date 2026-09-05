@@ -115,9 +115,17 @@ def do_recover_image(
         compatibility = assess(
             image, found.facts, flash_free_bytes=inventory.free_bytes
         )
-        plan = make_plan(image, inventory, compatibility)
+        plan = make_plan(
+            image,
+            inventory,
+            compatibility,
+            transfer_erases_partition=driver.semantics.erases_target_partition,
+        )
 
-        if plan.strategy is Strategy.BLOCKED_WOULD_STRAND:
+        if plan.strategy in (
+            Strategy.BLOCKED_WOULD_STRAND,
+            Strategy.BLOCKED_TRANSFER_ERASES,
+        ):
             if not accept_stranded_risk:
                 raise CommandError(
                     f"{compatibility.render()}\n\n{plan.render()}",
@@ -300,7 +308,7 @@ def restore_console_speed(
     So: mark the stream position, change both ends, nudge, and require *new*
     bytes past that mark plus a prompt we recognise.
     """
-    command = driver.restore_baud_command()
+    command = driver.restore_baud_command(step.from_baud)
     if command is not None:
         session.send(command)
 

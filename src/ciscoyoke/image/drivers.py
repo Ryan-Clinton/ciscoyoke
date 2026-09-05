@@ -6,8 +6,9 @@ and different ways of changing the console speed:
 
     Catalyst ``switch:``          Router ``rommon>``
     ---------------------         ------------------
-    set BAUD 115200               xmodem -s115200 (rate is a transfer flag)
+    set BAUD 115200               (rate changed via confreg + reconnect)
     copy xmodem: flash:<file>     xmodem -c <file>
+    writes one file               erases the whole partition first
     dir flash:                    dir flash:
       index perms size date name    size checksum name
     boot flash:<file>             boot flash:<file>
@@ -32,6 +33,27 @@ from typing import Protocol
 
 from ciscoyoke.image.plan import FlashFile, FlashInventory
 from ciscoyoke.stream.tracker import State
+
+
+@dataclass(frozen=True, slots=True)
+class TransferSemantics:
+    """What a platform's transfer procedure does *besides* transferring.
+
+    The stranding rule reasons about files the planner chooses to delete. That
+    is not the only way flash contents disappear: the ROMMON XMODEM procedure
+    erases the target partition before it starts receiving, and warns as much
+    ("All existing data in bootflash will be lost!"). A planner that only
+    tracks explicit deletions would call that transfer safe because it deleted
+    nothing itself -- and the existing image would be gone regardless.
+
+    So destruction is declared by the driver, and the planner reasons about
+    implicit effects as well as explicit ones.
+    """
+
+    erases_target_partition: bool = False
+    requires_confirmation: bool = False
+    confirmation_reply: bytes = b"y\r"
+    note: str = ""
 
 
 class Family(StrEnum):
@@ -72,13 +94,16 @@ class ImageRecoveryDriver(Protocol):
     @property
     def can_change_baud(self) -> bool: ...
 
+    @property
+    def semantics(self) -> TransferSemantics: ...
+
     def inventory_command(self) -> tuple[bytes, ...]: ...
 
     def parse_inventory(self, output: str) -> FlashInventory: ...
 
     def set_baud_command(self, baud: int) -> bytes | None: ...
 
-    def restore_baud_command(self) -> bytes | None: ...
+    def restore_baud_command(self, original_baud: int) -> bytes | None: ...
 
     def transfer_command(self, filename: str, baud: int) -> bytes: ...
 
@@ -97,6 +122,11 @@ class CatalystBootloaderDriver:
     def can_change_baud(self) -> bool:
         return True
 
+    @property
+    def semantics(self) -> TransferSemantics:
+        """`copy xmodem: flash:<file>` writes one file and leaves the rest."""
+        return TransferSemantics(erases_target_partition=False)
+
     def inventory_command(self) -> tuple[bytes, ...]:
         # Flash must be mounted before it can be listed, and load_helper is
         # required on the older platforms this targets.
@@ -108,10 +138,18 @@ class CatalystBootloaderDriver:
     def set_baud_command(self, baud: int) -> bytes | None:
         return f"set BAUD {baud}\r".encode("ascii")
 
-    def restore_baud_command(self) -> bytes | None:
-        # Returns the platform's own default rather than a rate this code
-        # guessed at.
-        return b"unset BAUD\r"
+    def restore_baud_command(self, original_baud: int) -> bytes | None:
+        """Return the console to the rate the session started at.
+
+        ``unset BAUD`` restores the platform default, which is 9600 -- correct
+        only if that is where we started. Someone who ran with ``--baud 19200``
+        would otherwise end with the device at 9600 and the host at 19200, and
+        the restoration proof would (rightly) fail. Naming the original rate
+        explicitly makes the two ends agree.
+        """
+        if original_baud == 9600:
+            return b"unset BAUD\r"
+        return f"set BAUD {original_baud}\r".encode("ascii")
 
     def transfer_command(self, filename: str, baud: int) -> bytes:
         del baud  # speed is set separately on this platform
@@ -136,8 +174,23 @@ class RouterRommonDriver:
 
     @property
     def can_change_baud(self) -> bool:
-        # Not as a separate step. `xmodem -s<rate>` carries it.
+        """No accelerated transfer until a real router proves how.
+
+        Deliberately conservative: an unverified speed change on a device with
+        no bootable image is the worst place to be wrong.
+        """
         return False
+
+    @property
+    def semantics(self) -> TransferSemantics:
+        return TransferSemantics(
+            erases_target_partition=True,
+            requires_confirmation=True,
+            note=(
+                "ROMMON XMODEM erases the target flash before receiving. "
+                "Cisco warns: all existing data in bootflash will be lost."
+            ),
+        )
 
     def inventory_command(self) -> tuple[bytes, ...]:
         return (b"dir flash:\r",)
@@ -149,13 +202,29 @@ class RouterRommonDriver:
         del baud
         return None
 
-    def restore_baud_command(self) -> bytes | None:
+    def restore_baud_command(self, original_baud: int) -> bytes | None:
+        del original_baud
         return None
 
     def transfer_command(self, filename: str, baud: int) -> bytes:
-        # `-c` is CRC-16 error checking; `-s` sets the transfer speed inline.
-        flags = f"-c{'' if baud == 9600 else f's{baud}'}"
-        return f"xmodem {flags} {filename}\r".encode("ascii")
+        """``xmodem -c <file>`` at whatever rate the console is already using.
+
+        An earlier version emitted ``-s115200`` to accelerate the transfer
+        while simultaneously reporting ``can_change_baud = False`` -- so the
+        executor never moved the *host* to match, and the router would have
+        been transmitting at 115200 into a port listening at 9600.
+
+        Cisco's documented 2600 procedure changes the ROMMON console rate
+        through ``confreg`` and a terminal reconnect, not through a flag on
+        the transfer. Rather than implement a confreg dance no router has yet
+        confirmed, this stays at the current rate: slower, and correct.
+
+        The 1760 will settle it. ``xmodem -?`` at its own ROMMON prompt is
+        evidence about that box, which is worth more than a guess about the
+        family.
+        """
+        del baud
+        return f"xmodem -c {filename}\r".encode("ascii")
 
     def boot_command(self, filename: str) -> bytes:
         return f"boot flash:{filename}\r".encode("ascii")

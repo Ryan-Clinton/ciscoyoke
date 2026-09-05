@@ -145,23 +145,37 @@ class Session:
         states: Iterable[State],
         *,
         timeout: float = 30.0,
+        after_offset: int | None = None,
     ) -> Observation:
         """Read until one of ``states`` is reached, or fail loudly.
 
         Never returns a state that was not observed. A timeout carries what was
         seen instead, because "expected X, got Y" is diagnosable and "timed out"
         is not.
+
+        ``after_offset`` demands that the conclusion rest on bytes arriving
+        after that position in the stream. Without it, waiting for a state the
+        session is *already* in returns immediately and proves nothing about
+        whether the device reacted -- fine when merely confirming where things
+        stand, wrong after sending a command.
         """
         wanted = set(states)
         deadline = self._clock() + timeout
 
+        def satisfied() -> bool:
+            if self._tracker.current.state not in wanted:
+                return False
+            if after_offset is None:
+                return True
+            return len(self._tracker.buffer) > after_offset
+
         while self._clock() < deadline:
-            if self._tracker.current.state in wanted:
+            if satisfied():
                 return self._tracker.current
             self.pump()
             self._sleep(0.01)
 
-        if self._tracker.current.state in wanted:
+        if satisfied():
             return self._tracker.current
         raise SessionTimeoutError(wanted, self._tracker.current)
 

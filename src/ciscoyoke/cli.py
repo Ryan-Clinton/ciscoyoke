@@ -357,6 +357,7 @@ def cmd_reset(args: argparse.Namespace) -> int:
             confirm=args.confirm,
             accept_config_loss=args.accept_config_loss,
             archive_to=Path(args.archive_to) if args.archive_to else None,
+            platform=args.platform,
         )
         return _print(
             Result("reset", int(code), {"confirmed": args.confirm}), args.json, rendered
@@ -447,6 +448,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="proceed even though preservation captured nothing",
     )
     reset_parser.add_argument("--archive-to", help="write the archive bundle here")
+    reset_parser.add_argument(
+        "--platform",
+        choices=("router", "catalyst"),
+        help=(
+            "state the platform when the device will not identify itself; "
+            "reset is irreversible, so it will not guess"
+        ),
+    )
     reset_parser.set_defaults(handler=cmd_reset)
 
     recover_parser = sub.add_parser("recover", help="access and image recovery")

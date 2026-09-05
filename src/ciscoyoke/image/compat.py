@@ -139,26 +139,25 @@ def assess(
             )
         )
 
+    # Flash capacity is reported, never judged. "Does this image belong on
+    # this device?" and "can it be staged safely?" are different questions,
+    # and answering the first with the second made the whole deletion and
+    # stranding apparatus unreachable: insufficient space returned
+    # INCOMPATIBLE, and the planner short-circuits on that before it ever
+    # considers freeing room. Capacity belongs to the planner.
     if flash_free_bytes is None:
         evidence.append(
             Evidence("flash space", None, "free space not established")
         )
-    elif flash_free_bytes >= image.size:
-        evidence.append(
-            Evidence(
-                "flash space",
-                True,
-                f"{flash_free_bytes / 1048576:.1f} MiB free / "
-                f"{image.size_mib:.1f} MiB required",
-            )
-        )
     else:
+        fits = flash_free_bytes >= image.size
         evidence.append(
             Evidence(
                 "flash space",
-                False,
+                None,
                 f"{flash_free_bytes / 1048576:.1f} MiB free / "
-                f"{image.size_mib:.1f} MiB required",
+                f"{image.size_mib:.1f} MiB required"
+                + ("" if fits else " -- the planner will decide how to make room"),
             )
         )
 

@@ -80,14 +80,14 @@ def test_an_empty_file_is_refused(tmp_path: Path) -> None:
 # -- compatibility: evidence, never assertion ------------------------------
 
 
-def test_matching_platform_and_space_is_compatible(tmp_path: Path) -> None:
+def test_a_matching_platform_is_compatible(tmp_path: Path) -> None:
     image = fingerprint(make_image(tmp_path, "c2950-i6q4l2-mz.121-22.bin", 4096))
     facts = from_show_version(SHOW_VERSION_2950)
 
     result = assess(image, facts, flash_free_bytes=8192)
 
     assert result.verdict is Verdict.COMPATIBLE
-    assert result.confidence is Confidence.MEDIUM
+    assert result.confidence is not Confidence.HIGH
 
 
 def test_confidence_is_never_high_for_a_pass(tmp_path: Path) -> None:
@@ -109,11 +109,41 @@ def test_wrong_platform_is_incompatible(tmp_path: Path) -> None:
     assert result.blocking
 
 
-def test_insufficient_flash_is_incompatible(tmp_path: Path) -> None:
+def test_insufficient_flash_is_reported_not_judged(tmp_path: Path) -> None:
+    """Capacity is a planning question, not a compatibility one.
+
+    Treating "not enough room" as INCOMPATIBLE short-circuited make_plan before
+    it could consider freeing space -- which made the deletion and stranding
+    machinery unreachable whenever free space was known and insufficient.
+    """
     image = fingerprint(make_image(tmp_path, "c2950-i6q4l2-mz.121-22.bin", 8192))
     facts = from_show_version(SHOW_VERSION_2950)
 
-    assert assess(image, facts, flash_free_bytes=1024).verdict is Verdict.INCOMPATIBLE
+    result = assess(image, facts, flash_free_bytes=1024)
+
+    assert result.verdict is not Verdict.INCOMPATIBLE
+    space = next(e for e in result.evidence if e.check == "flash space")
+    assert space.passed is None
+    assert "make room" in space.detail
+
+
+def test_the_stranding_branch_is_now_reachable(tmp_path: Path) -> None:
+    """The point of the split: insufficient space reaches the planner.
+
+    Previously this returned BLOCKED_INCOMPATIBLE and the stranding rule never
+    ran at all.
+    """
+    from ciscoyoke.image.plan import FlashFile, FlashInventory, Strategy, make_plan
+
+    image = fingerprint(make_image(tmp_path, "c2950-i6q4l2-mz.121-22.bin", 5_500_000))
+    facts = from_show_version(SHOW_VERSION_2950)
+    inventory = FlashInventory(
+        files=(FlashFile("c2950-old.bin", 5_000_000),), free_bytes=2_000_000
+    )
+
+    plan = make_plan(image, inventory, assess(image, facts, flash_free_bytes=2_000_000))
+
+    assert plan.strategy is Strategy.BLOCKED_WOULD_STRAND
 
 
 def test_unknown_device_yields_undetermined_not_compatible(tmp_path: Path) -> None:

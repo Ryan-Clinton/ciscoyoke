@@ -307,8 +307,12 @@ def test_the_two_platforms_produce_different_commands() -> None:
     assert catalyst.set_baud_command(115200) == b"set BAUD 115200\r"
     assert rommon.set_baud_command(115200) is None
 
-    assert catalyst.restore_baud_command() == b"unset BAUD\r"
-    assert rommon.restore_baud_command() is None
+    # `unset BAUD` returns the platform default, which is only correct when
+    # that is where the session began. A non-default starting rate is named
+    # explicitly so both ends end up agreeing.
+    assert catalyst.restore_baud_command(9600) == b"unset BAUD\r"
+    assert catalyst.restore_baud_command(19200) == b"set BAUD 19200\r"
+    assert rommon.restore_baud_command(9600) is None
 
     assert b"copy xmodem:" in catalyst.transfer_command("a.bin", 115200)
     assert b"xmodem -c" in rommon.transfer_command("a.bin", 9600)

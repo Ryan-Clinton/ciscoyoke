@@ -286,12 +286,18 @@ def test_a_router_in_rommon_gets_rommon_commands_not_catalyst_ones() -> None:
     """
     rommon = RouterRommonDriver()
 
+    # No inline speed flag. An earlier version emitted `-s115200` while
+    # reporting can_change_baud=False, so the host never followed and the
+    # router would have transmitted at 115200 into a port listening at 9600.
+    # Cisco changes the ROMMON rate through confreg and a reconnect, not a
+    # transfer flag -- so until a real router proves otherwise, transfers run
+    # at the current rate.
     assert rommon.transfer_command("c2600-i-mz.bin", 115200) == (
-        b"xmodem -cs115200 c2600-i-mz.bin\r"
+        b"xmodem -c c2600-i-mz.bin\r"
     )
-    assert rommon.transfer_command("c2600-i-mz.bin", 9600) == b"xmodem -c c2600-i-mz.bin\r"
-    # ROMMON carries the rate on the transfer, so there is no standalone
-    # command -- and returning None is what stops a Catalyst command being sent.
+    assert rommon.transfer_command("c2600-i-mz.bin", 9600) == (
+        b"xmodem -c c2600-i-mz.bin\r"
+    )
     assert rommon.set_baud_command(115200) is None
     assert rommon.can_change_baud is False
 

@@ -74,6 +74,10 @@ class Strategy(StrEnum):
     BLOCKED_NO_ROOM = "blocked_no_room"
     """Even deleting everything would not fit the image."""
 
+    BLOCKED_TRANSFER_ERASES = "blocked_transfer_erases"
+    """The transfer procedure itself destroys the existing images, so the
+    stranding rule applies even though nothing would be explicitly deleted."""
+
 
 @dataclass(frozen=True, slots=True)
 class FlashFile:
@@ -95,7 +99,20 @@ class FlashInventory:
 
     @property
     def images(self) -> tuple[FlashFile, ...]:
+        """Files that *look* like images.
+
+        A ``.bin`` in flash is a candidate, not a known-good image: the name
+        says nothing about whether it is complete, uncorrupted, compatible, or
+        has ever booted. On the hardware this tool exists for, all four are
+        live possibilities. Callers that need certainty have to earn it -- see
+        the boot proof.
+        """
         return tuple(f for f in self.files if f.name.lower().endswith(".bin"))
+
+    @property
+    def candidate_images(self) -> tuple[FlashFile, ...]:
+        """Clearer name for the same thing. Prefer this at call sites."""
+        return self.images
 
     def find(self, name: str) -> FlashFile | None:
         target = name.lower().rsplit("/", 1)[-1].rsplit(":", 1)[-1]
@@ -137,7 +154,7 @@ class TransferPlan:
     delete: tuple[FlashFile, ...] = ()
     boot_target: str | None = None
     reason: str = ""
-    bootable_images: tuple[FlashFile, ...] = field(default=())
+    candidate_images: tuple[FlashFile, ...] = field(default=())
 
     @property
     def blocked(self) -> bool:
@@ -156,7 +173,7 @@ class TransferPlan:
             model.delete_flash_file(
                 file.name,
                 guard=ACCEPT_IMAGE_DELETION,
-                only_bootable=len(self.bootable_images) <= 1,
+                only_bootable=len(self.candidate_images) <= 1,
             )
             for file in self.delete
         )
@@ -191,13 +208,15 @@ def make_plan(
     image: Fingerprint,
     inventory: FlashInventory,
     compatibility: Compatibility,
+    *,
+    transfer_erases_partition: bool = False,
 ) -> TransferPlan:
     """Decide how -- or whether -- to get this image onto the device.
 
     Ordered so the cheapest safe answer wins: an image already present beats a
     two-hour transfer, and an existing bootable image beats deleting anything.
     """
-    bootable = inventory.images
+    bootable = inventory.candidate_images
 
     if compatibility.verdict is Verdict.INCOMPATIBLE:
         failures = "; ".join(e.detail for e in compatibility.blocking)
@@ -206,8 +225,33 @@ def make_plan(
             image=image,
             inventory=inventory,
             compatibility=compatibility,
-            bootable_images=bootable,
+            candidate_images=bootable,
             reason=f"Compatibility check failed: {failures}",
+        )
+
+    # Some transfer procedures destroy the partition before receiving --
+    # ROMMON XMODEM warns that all existing data in bootflash will be lost.
+    # The stranding rule has to cover that too, or a plan that deletes nothing
+    # itself still ends with no rollback image.
+    if transfer_erases_partition and bootable:
+        return TransferPlan(
+            strategy=Strategy.BLOCKED_TRANSFER_ERASES,
+            image=image,
+            inventory=inventory,
+            compatibility=compatibility,
+            candidate_images=bootable,
+            reason=(
+                "BLOCKED\n\n"
+                "This platform's transfer procedure erases the target flash "
+                "before receiving the replacement, so the "
+                f"{len(bootable)} image(s) already present will not survive it "
+                "-- even though nothing would be explicitly deleted.\n\n"
+                "A failed transfer would leave no bootable image at all.\n\n"
+                "Options:\n"
+                "  1. Abort                                        (default)\n"
+                "  2. Boot and retain an existing image instead\n"
+                "  3. Accept stranded-device risk   --accept-stranded-risk"
+            ),
         )
 
     existing = inventory.find(image.name)
@@ -218,7 +262,7 @@ def make_plan(
             inventory=inventory,
             compatibility=compatibility,
             boot_target=existing.name,
-            bootable_images=bootable,
+            candidate_images=bootable,
             reason=(
                 "An image of this name and size is already in flash. Booting it "
                 "avoids a transfer entirely."
@@ -237,7 +281,7 @@ def make_plan(
             image=image,
             inventory=inventory,
             compatibility=compatibility,
-            bootable_images=bootable,
+            candidate_images=bootable,
             reason=(
                 "Free space could not be determined. The transfer may fail for "
                 "lack of room; nothing will be deleted to prevent that."
@@ -250,7 +294,7 @@ def make_plan(
             image=image,
             inventory=inventory,
             compatibility=compatibility,
-            bootable_images=bootable,
+            candidate_images=bootable,
             reason="Sufficient free space; no deletion required.",
         )
 
@@ -262,7 +306,7 @@ def make_plan(
             inventory=inventory,
             compatibility=compatibility,
             delete=bootable,
-            bootable_images=bootable,
+            candidate_images=bootable,
             reason=_stranded_message(image, bootable, free),
         )
 
@@ -282,7 +326,7 @@ def make_plan(
             image=image,
             inventory=inventory,
             compatibility=compatibility,
-            bootable_images=bootable,
+            candidate_images=bootable,
             reason=(
                 f"Even after deleting every spare image, only "
                 f"{freed / 1048576:.1f} MiB would be free for a "
@@ -296,7 +340,7 @@ def make_plan(
         inventory=inventory,
         compatibility=compatibility,
         delete=tuple(to_delete),
-        bootable_images=bootable,
+        candidate_images=bootable,
         reason=(
             "Room can be made without touching the last bootable image, so a "
             "failed transfer still leaves the device able to boot."
@@ -333,6 +377,13 @@ def _stranded_message(
     return "\n".join(lines)
 
 
+def _overridable(strategy: Strategy) -> bool:
+    return strategy in (
+        Strategy.BLOCKED_WOULD_STRAND,
+        Strategy.BLOCKED_TRANSFER_ERASES,
+    )
+
+
 def override_stranded(plan: TransferPlan) -> TransferPlan:
     """Convert a stranding block into an acknowledged deletion.
 
@@ -341,7 +392,7 @@ def override_stranded(plan: TransferPlan) -> TransferPlan:
     ``accept_stranded_risk`` guard, so the journal records that the device was
     deliberately left without a rollback image rather than accidentally.
     """
-    if plan.strategy is not Strategy.BLOCKED_WOULD_STRAND:
+    if not _overridable(plan.strategy):
         return plan
     return TransferPlan(
         strategy=Strategy.TRANSFER_AFTER_DELETING_SPARE,
@@ -349,7 +400,7 @@ def override_stranded(plan: TransferPlan) -> TransferPlan:
         inventory=plan.inventory,
         compatibility=plan.compatibility,
         delete=plan.delete,
-        bootable_images=plan.bootable_images,
+        candidate_images=plan.candidate_images,
         reason=(
             "Stranded-device risk accepted explicitly: the only bootable image "
             "will be deleted, and a failed transfer will leave no image."
