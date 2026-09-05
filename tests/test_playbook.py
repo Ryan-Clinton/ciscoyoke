@@ -307,10 +307,31 @@ def test_router_reset_does_not_delete_a_vlan_database() -> None:
     assert "delete_vlan_database" not in names
 
 
-def test_an_unknown_model_defaults_to_the_switch_playbook() -> None:
-    """The safer default is the one whose failure mode is a no-op."""
-    names = [step.name for step in reset.for_model(None).steps]
-    assert "delete_vlan_database" in names
+def test_an_unknown_model_is_refused_rather_than_guessed_at() -> None:
+    """Reset is irreversible, so it does not guess.
+
+    An earlier version defaulted to the switch playbook, reasoning that
+    deleting a nonexistent vlan.dat on a router is harmless. True -- but the
+    failure is not symmetric: a wrong guess fails *after* write erase has
+    already destroyed the configuration, so the cost is paid before the guess
+    is discovered to be wrong.
+    """
+    with pytest.raises(reset.PlatformUnknownError, match="irreversible"):
+        reset.for_model(None)
+
+
+def test_the_operator_may_supply_the_missing_evidence() -> None:
+    """Stating the platform is different from the tool inventing it."""
+    router = [s.name for s in reset.for_model(None, platform="router").steps]
+    catalyst = [s.name for s in reset.for_model(None, platform="catalyst").steps]
+
+    assert "delete_vlan_database" not in router
+    assert "delete_vlan_database" in catalyst
+
+
+def test_an_unrecognised_model_is_also_refused() -> None:
+    with pytest.raises(reset.PlatformUnknownError, match="verified reset"):
+        reset.for_model("NETGEAR-GS108")
 
 
 def test_a_known_router_gets_the_router_playbook() -> None:

@@ -14,6 +14,12 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from ciscoyoke.image.bootproof import ProofOutcome, prove
+from ciscoyoke.image.drivers import (
+    CatalystBootloaderDriver,
+    NoDriverError,
+    RouterRommonDriver,
+    driver_for,
+)
 from ciscoyoke.image.fingerprint import fingerprint
 from ciscoyoke.imaging import raise_console_speed, restore_console_speed
 from ciscoyoke.playbook import xmodem
@@ -237,7 +243,7 @@ def test_the_device_baud_command_precedes_the_host_change() -> None:
     session, transport = recording_session()
     step = TransferStep(Method.XMODEM, 1024, "ios.bin", from_baud=9600)
 
-    raise_console_speed(session, step)
+    raise_console_speed(session, step, CatalystBootloaderDriver())
 
     device_index = transport.events.index("tx:set BAUD 115200")
     host_index = transport.events.index("host_baud:115200")
@@ -248,7 +254,7 @@ def test_restoring_uses_unset_baud_and_puts_the_host_back() -> None:
     session, transport = recording_session()
     step = TransferStep(Method.XMODEM, 1024, "ios.bin", from_baud=9600)
 
-    restore_console_speed(session, step)
+    restore_console_speed(session, step, CatalystBootloaderDriver())
 
     assert "tx:unset BAUD" in transport.events
     device_index = transport.events.index("tx:unset BAUD")
@@ -260,12 +266,68 @@ def test_the_xmodem_destination_carries_a_filename() -> None:
     """`copy xmodem: flash:` with no name is rejected by the bootloader.
 
     Cisco documents `copy xmodem: flash:c2955-i6q4l2-mz.121-13.EA1.bin`.
-    """
-    source = Path(__file__).parent.parent / "src" / "ciscoyoke" / "imaging.py"
-    body = source.read_text(encoding="utf-8")
 
-    assert "copy xmodem: flash:{step.filename}" in body
-    assert "copy xmodem: flash:\\r" not in body
+    The previous version of this test read imaging.py and asserted a substring
+    was present, which a comment would have satisfied. This asserts the bytes
+    the driver actually produces.
+    """
+    command = CatalystBootloaderDriver().transfer_command("c2950-foo.bin", 115200)
+
+    assert command == b"copy xmodem: flash:c2950-foo.bin\r"
+
+
+def test_a_router_in_rommon_gets_rommon_commands_not_catalyst_ones() -> None:
+    """The two are different programs, not two dialects of one.
+
+    Sending `set BAUD` and `copy xmodem: flash:` to a ROMMON prompt produces a
+    device that ignores them -- and the flash listing shapes differ too, so a
+    Catalyst parser yields an empty inventory that the planner reads as "no
+    images present".
+    """
+    rommon = RouterRommonDriver()
+
+    assert rommon.transfer_command("c2600-i-mz.bin", 115200) == (
+        b"xmodem -cs115200 c2600-i-mz.bin\r"
+    )
+    assert rommon.transfer_command("c2600-i-mz.bin", 9600) == b"xmodem -c c2600-i-mz.bin\r"
+    # ROMMON carries the rate on the transfer, so there is no standalone
+    # command -- and returning None is what stops a Catalyst command being sent.
+    assert rommon.set_baud_command(115200) is None
+    assert rommon.can_change_baud is False
+
+
+def test_each_platform_parses_its_own_flash_listing() -> None:
+    catalyst_output = (
+        "Directory of flash:/\n"
+        "    2  -rwx     5001728   Mar 01 1993 00:01:24  c2950-i6q4l2-mz.bin\n"
+        "7741440 bytes total (2739712 bytes free)\n"
+    )
+    rommon_output = (
+        "File size           Checksum   File name\n"
+        "5358032 bytes (0x51c1d0)   0x7b16    c2600-i-mz.122-10b.bin\n"
+    )
+
+    catalyst = CatalystBootloaderDriver().parse_inventory(catalyst_output)
+    rommon = RouterRommonDriver().parse_inventory(rommon_output)
+
+    assert [f.name for f in catalyst.images] == ["c2950-i6q4l2-mz.bin"]
+    assert catalyst.free_bytes == 2739712
+    assert [f.name for f in rommon.images] == ["c2600-i-mz.122-10b.bin"]
+    assert rommon.images[0].size == 5358032
+
+    # The crucial half: each parser must NOT silently read the other's output
+    # as an empty inventory, which the planner would act on.
+    assert CatalystBootloaderDriver().parse_inventory(rommon_output).images == ()
+
+
+def test_a_device_in_an_unsupported_state_is_refused_a_driver() -> None:
+    with pytest.raises(NoDriverError, match="no verified image-recovery"):
+        driver_for(State.LOGIN_PASSWORD, None)
+
+
+def test_a_booted_device_is_told_it_does_not_need_a_rescue() -> None:
+    with pytest.raises(NoDriverError, match="does not need an image rescue"):
+        driver_for(State.PRIV_EXEC, "WS-C2950-24")
 
 
 # -- 4. a transfer is not a rescue until the device boots ------------------

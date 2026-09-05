@@ -35,6 +35,9 @@ class SignalKind(StrEnum):
     BOOT_ACTIVITY = "boot_activity"
     BAD_PASSWORD = "bad_password"
     XMODEM_READY = "xmodem_ready"
+    CONFIRM_PROMPT = "confirm_prompt"
+    SAVE_CONFIG_PROMPT = "save_config_prompt"
+    FILENAME_PROMPT = "filename_prompt"
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +79,34 @@ _ANCHORED: tuple[tuple[SignalKind, re.Pattern[str], str], ...] = (
         SignalKind.PAGER,
         re.compile(r"(--\s*More\s*--)[ \t]*\Z"),
         "pager_marker",
+    ),
+    # IOS asks for confirmation constantly, and every destructive command in
+    # this project runs into one. `write erase` answers "Erasing the nvram
+    # filesystem will remove all files! Continue? [confirm]"; `reload` asks
+    # whether to save and then confirms; `delete` asks for the filename and
+    # then confirms. Without these as first-class signals a playbook waits for
+    # a prompt the device will never reach until the question is answered, and
+    # both ends wait until the timeout.
+    (
+        SignalKind.CONFIRM_PROMPT,
+        re.compile(r"(\[confirm\])\s*\Z", re.IGNORECASE),
+        "interactive_question",
+    ),
+    (
+        SignalKind.SAVE_CONFIG_PROMPT,
+        re.compile(
+            r"(System configuration has been modified\.\s*Save\?\s*\[yes/no\]:)\s*\Z",
+            re.IGNORECASE,
+        ),
+        "interactive_question",
+    ),
+    (
+        SignalKind.FILENAME_PROMPT,
+        re.compile(
+            r"((?:Delete|Source|Destination) filename \[[^\]]*\]\?)\s*\Z",
+            re.IGNORECASE,
+        ),
+        "interactive_question",
     ),
     (
         SignalKind.USERNAME_PROMPT,

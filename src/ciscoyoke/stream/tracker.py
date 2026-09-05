@@ -39,6 +39,16 @@ class State(StrEnum):
     PRIV_EXEC = "priv_exec"
     CONFIG_MODE = "config_mode"
     PAGER = "pager"
+    CONFIRM = "confirm"
+    """IOS is waiting on a [confirm] before it will do the thing."""
+
+    SAVE_CONFIG_PROMPT = "save_config_prompt"
+    """`reload` asking whether to save the running configuration first."""
+
+    FILENAME_PROMPT = "filename_prompt"
+    """`delete` or `copy` asking which file, usually with a default in
+    brackets that Enter accepts."""
+
     TRANSFER = "transfer"
     HUMAN_ACTION = "human_action"
     DESTRUCTIVE_RECOVERY_GUARD = "destructive_recovery_guard"
@@ -86,6 +96,9 @@ _DIRECT: dict[SignalKind, State] = {
     SignalKind.BOOTLOADER_PROMPT: State.BOOTLOADER,
     SignalKind.SETUP_DIALOG: State.SETUP_DIALOG,
     SignalKind.PAGER: State.PAGER,
+    SignalKind.CONFIRM_PROMPT: State.CONFIRM,
+    SignalKind.SAVE_CONFIG_PROMPT: State.SAVE_CONFIG_PROMPT,
+    SignalKind.FILENAME_PROMPT: State.FILENAME_PROMPT,
     SignalKind.USERNAME_PROMPT: State.LOGIN_USERNAME,
     SignalKind.CONFIG_PROMPT: State.CONFIG_MODE,
     SignalKind.PRIV_EXEC_PROMPT: State.PRIV_EXEC,

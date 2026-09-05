@@ -133,6 +133,21 @@ def prove(
     version, image_file = running
     checks.append(("running version confirmed", True, version or "unknown"))
 
+    # The identity check that matters. Comparing versions alone would pass a
+    # device running c2950-*otherfeatures*-mz.121-22.EA14.bin after being sent
+    # c2950-i6q4l2-mz.121-22.EA14.bin: same IOS version, different image, and
+    # the feature set is the whole reason someone chose one over the other.
+    running_name = _basename(image_file)
+    expected_name = image.name
+    image_matched: bool | None
+    if running_name is None:
+        image_matched = None
+        image_detail = "show version did not report a system image file"
+    else:
+        image_matched = running_name.lower() == expected_name.lower()
+        image_detail = f"expected {expected_name}, running {running_name}"
+    checks.append(("running image is the supplied image", image_matched, image_detail))
+
     expected = image.version
     matched = _versions_agree(expected, version)
     checks.append(
@@ -151,7 +166,7 @@ def prove(
         )
     )
 
-    if matched and console_restored:
+    if image_matched and matched is not False and console_restored:
         return BootProof(
             ProofOutcome.PASS,
             tuple(checks),
@@ -189,6 +204,19 @@ def _running_image(output: str) -> str | None:
             _, _, tail = line.partition("is")
             return tail.strip().strip('"')
     return None
+
+
+def _basename(path: str | None) -> str | None:
+    """The filename from ``flash:c2950-...bin`` or ``flash:/dir/c2950-...bin``.
+
+    IOS reports the image with a device prefix and sometimes a directory; the
+    supplied image is a local filename. Comparing the basenames is the only
+    part that is meaningfully the same thing.
+    """
+    if not path:
+        return None
+    tail = path.rsplit(":", 1)[-1]
+    return tail.rsplit("/", 1)[-1].strip() or None
 
 
 def _versions_agree(expected: str | None, running: str | None) -> bool | None:

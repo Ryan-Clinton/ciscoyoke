@@ -134,11 +134,20 @@ a `FakeDevice` replays one as a serial port and asserts the code transmits what
 the real session transmitted. CI runs the real engine against real recorded
 device behaviour on a machine with nothing plugged in.
 
+**Catalyst and router recovery are different programs, not dialects.** A
+`switch:` bootloader takes `set BAUD` and `copy xmodem: flash:<file>`; a router
+`rommon>` takes neither, carrying the rate as a flag on `xmodem -c <file>`, and
+prints a differently-shaped flash listing. Each has its own driver, and a device
+matching neither is refused rather than handed a procedure written for something
+else.
+
 **A transfer is not a rescue until the device boots.** Image recovery ends in a
 boot proof with four conditions: the image loaded, IOS reached a prompt, `show
 version` reports the expected image, and the console speed was put back. Falling
 short of all four reports `booted_unverified` rather than success — a completed
-transfer proves the bytes arrived, not that they boot.
+transfer proves the bytes arrived, not that they boot. The image check compares
+the *filename IOS reports running*, not just the version, because the same
+version ships in several feature sets.
 
 **Confidence is ordinal, never a float.** `0.98` would look scientific without
 being calibrated against anything. Until there is a labelled corpus, the schema
