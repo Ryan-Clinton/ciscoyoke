@@ -1,0 +1,11 @@
+{"v":1,"kind":"public","scrub_version":1,"source":"synthetic: constructed from Cisco published output, not captured"}
+{"v":1,"t":0.0,"dir":"rx","b":"\r\nSystem Bootstrap, Version 12.2(8r)T2, RELEASE SOFTWARE (fc1)\r\n"}
+{"v":1,"t":0.1,"dir":"rx","b":"Copyright (c) 2003 by cisco Systems, Inc.\r\n"}
+{"v":1,"t":0.2,"dir":"rx","b":"C1760 platform with 131072 Kbytes of main memory\r\n"}
+{"v":1,"t":1.5,"dir":"rx","b":"\r\nSelf decompressing the image : ###########\r\n"}
+{"v":1,"t":18.0,"dir":"rx","b":"\r\nPress RETURN to get started!\r\n"}
+{"v":1,"t":18.5,"dir":"rx","b":"\r\nRouter>"}
+{"v":1,"t":19.0,"dir":"tx","b":"terminal length 0\r"}
+{"v":1,"t":19.2,"dir":"rx","b":"terminal length 0\r\nRouter>"}
+{"v":1,"t":19.5,"dir":"tx","b":"show version\r"}
+{"v":1,"t":20.0,"dir":"rx","b":"show version\r\nCisco IOS Software, C1700 Software (C1700-ADVIPSERVICESK9-M), Version 12.4(25c), RELEASE SOFTWARE (fc2)\r\nCopyright (c) 1986-2011 by Cisco Systems, Inc.\r\n\r\nROM: System Bootstrap, Version 12.2(8r)T2, RELEASE SOFTWARE (fc1)\r\n\r\nRouter uptime is 3 minutes\r\nSystem image file is \"flash:c1700-advipservicesk9-mz.124-25c.bin\"\r\n\r\ncisco 1760 (MPC860P) processor (revision 0x500) with 121856K/9216K bytes of memory.\r\nProcessor board ID FTX0812A1BC\r\n32768K bytes of processor board System flash (Read/Write)\r\n\r\nConfiguration register is 0x2102\r\n\r\nRouter>"}

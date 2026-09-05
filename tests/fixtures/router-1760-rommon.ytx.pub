@@ -1,0 +1,3 @@
+{"v":1,"kind":"public","scrub_version":1,"source":"synthetic: constructed from Cisco published output, not captured"}
+{"v":1,"t":0.0,"dir":"rx","b":"\r\nSystem Bootstrap, Version 12.2(8r)T2\r\n"}
+{"v":1,"t":0.4,"dir":"rx","b":"\r\nrommon 1 > "}

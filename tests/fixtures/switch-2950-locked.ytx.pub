@@ -1,0 +1,4 @@
+{"v":1,"kind":"public","scrub_version":1,"source":"synthetic: constructed from Cisco published output, not captured"}
+{"v":1,"t":0.0,"dir":"rx","b":"\r\n"}
+{"v":1,"t":0.5,"dir":"tx","b":"\r"}
+{"v":1,"t":0.8,"dir":"rx","b":"\r\n\r\nUser Access Verification\r\n\r\nUsername: "}

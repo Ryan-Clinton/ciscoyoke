@@ -1,0 +1,7 @@
+{"v":1,"kind":"public","scrub_version":1,"source":"synthetic: constructed from Cisco published output, not captured"}
+{"v":1,"t":0.0,"dir":"rx","b":"\r\nBase ethernet MAC Address: 00:0b:be:2f:11:80\r\n"}
+{"v":1,"t":0.2,"dir":"rx","b":"Xmodem file system is available.\r\n"}
+{"v":1,"t":0.4,"dir":"rx","b":"The password-recovery mechanism is enabled.\r\n"}
+{"v":1,"t":1.0,"dir":"rx","b":"Initializing Flash...\r\nflashfs[0]: 1 files, 1 directories\r\n"}
+{"v":1,"t":2.0,"dir":"rx","b":"\r\nError loading \"flash:/c2950-i6q4l2-mz.bin\"\r\n"}
+{"v":1,"t":2.4,"dir":"rx","b":"\r\nswitch: "}
