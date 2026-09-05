@@ -110,6 +110,14 @@ class StateTracker:
         self._last_sent: bytes = b""
         self._current = Observation(State.UNKNOWN, Basis.UNKNOWN, Confidence.LOW)
         self._history: list[Observation] = [self._current]
+        # Latched, not re-derived. Detection reads a bounded tail of the
+        # stream, so a recovery-disabled banner scrolls out of view once the
+        # device emits enough output after it -- and the guard would silently
+        # lift at exactly the moment a destructive step was about to run. The
+        # banner is a fact about the *device*, not about the last 512 bytes, so
+        # once seen it stays seen.
+        self._guard_latched = False
+        self._guard_evidence: tuple[Signal, ...] = ()
 
     # -- context -----------------------------------------------------------
 
@@ -122,6 +130,31 @@ class StateTracker:
         states are separate layers.
         """
         self._last_sent = data
+
+    def clear_recovery_guard(self, reason: str) -> None:
+        """Release the latched guard, which needs a reason and a caller.
+
+        Deliberately not automatic. The only thing that legitimately clears it
+        is a fresh observation of the device booting *without* the banner --
+        after a power cycle, say -- and establishing that is a lifecycle
+        judgement rather than something the byte stream can decide.
+
+        The accumulated buffer is discarded along with the latch, because the
+        banner is still sitting in it: clearing the flag while leaving the
+        evidence would simply re-latch on the next byte. Discarding is also the
+        honest reading of what the caller is asserting -- that the stream so
+        far no longer describes the device in front of them. The transcript is
+        held separately by the recorder and is unaffected.
+        """
+        if not reason:
+            raise ValueError("clearing the recovery guard requires a reason")
+        self._guard_latched = False
+        self._guard_evidence = ()
+        self._buffer.clear()
+
+    @property
+    def recovery_guard_latched(self) -> bool:
+        return self._guard_latched
 
     # -- ingestion ---------------------------------------------------------
 
@@ -153,17 +186,23 @@ class StateTracker:
     def _resolve(self, signals: tuple[Signal, ...]) -> Observation:
         by_kind = {signal.kind: signal for signal in signals}
 
-        # The guard outranks everything. If the device has announced that
-        # password recovery is disabled, no prompt reading may override it --
-        # this is the state that blocks destructive steps, and it must not be
-        # possible to leave it by seeing something more specific afterwards.
+        # The guard outranks everything, and it latches. The device has told us
+        # that interrupting its boot destroys the startup configuration; that
+        # remains true however much output arrives afterwards. Re-deriving it
+        # from the tail each time would let it lapse as soon as the banner
+        # scrolled out of the detector window -- which is precisely when a
+        # destructive step is about to run.
         guard = by_kind.get(SignalKind.RECOVERY_DISABLED)
-        if guard is not None:
+        if guard is not None and not self._guard_latched:
+            self._guard_latched = True
+            self._guard_evidence = (guard,)
+
+        if self._guard_latched:
             return Observation(
                 State.DESTRUCTIVE_RECOVERY_GUARD,
                 Basis.OBSERVED,
                 Confidence.HIGH,
-                (guard,),
+                self._guard_evidence,
             )
 
         anchored = first_anchored(signals)

@@ -12,6 +12,7 @@ the journal is the only thing that knows to look for it there.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from ciscoyoke.commands import (
@@ -22,8 +23,13 @@ from ciscoyoke.commands import (
     journal_for,
 )
 from ciscoyoke.identify.probe import intake
+from ciscoyoke.image.bootproof import prove
 from ciscoyoke.image.compat import assess
-from ciscoyoke.image.fingerprint import ImageUnreadableError, fingerprint
+from ciscoyoke.image.fingerprint import (
+    Fingerprint,
+    ImageUnreadableError,
+    fingerprint,
+)
 from ciscoyoke.image.plan import (
     FlashInventory,
     Strategy,
@@ -37,6 +43,9 @@ from ciscoyoke.result.exits import ExitCode
 from ciscoyoke.session import Session
 from ciscoyoke.stream.tracker import State
 from ciscoyoke.transport.serial_ import DEFAULT_BAUD
+
+#: Called with live transfer progress so a long transfer is never silent.
+ProgressReporter = Callable[[Progress], None]
 
 
 def read_flash(session: Session, state: State) -> FlashInventory:
@@ -72,7 +81,7 @@ def do_recover_image(
     confirm: bool = False,
     accept_stranded_risk: bool = False,
     via: str = "xmodem",
-    on_progress: object = None,
+    on_progress: ProgressReporter | None = None,
 ) -> tuple[str, ExitCode]:
     """Plan and, with confirmation, perform an image rescue."""
     blocked = interrupted_run(port)
@@ -140,7 +149,59 @@ def do_recover_image(
                 ExitCode.TRANSPORT_CAPABILITY_UNAVAILABLE,
             )
 
-        return _transfer(session, port, image_path, step, rendered)
+        return _transfer(
+            session, port, image_path, step, rendered, image, on_progress
+        )
+
+
+def raise_console_speed(session: Session, step: TransferStep) -> None:
+    """Change the line speed on the device *first*, then on the host.
+
+    The ordering is not arbitrary and getting it wrong is silent. Cisco's
+    procedure is ``switch: set BAUD 115200``, after which -- in their words --
+    "the screen goes blank", because the device is now talking at a rate the
+    host is not listening at. The host follows.
+
+    An earlier version of this code changed the host first, which left the
+    device at 9600 receiving 115200 and every subsequent command arriving as
+    line noise. The symptom is a device that appears to have hung, which is
+    exactly the wrong thing to make someone believe about a box they are trying
+    to rescue.
+    """
+    session.send(f"set BAUD {step.to_baud}\r".encode("ascii"))
+    # No settle: the reply, if any, arrives at the new speed and is unreadable
+    # at the old one. The reacquisition below is what confirms the change.
+
+    setter = session.transport.set_baud  # type: ignore[attr-defined]
+    setter(step.to_baud)
+    reset_input = getattr(session.transport, "reset_input", None)
+    if reset_input is not None:
+        # Bytes captured at the previous rate are noise at this one, and
+        # feeding them to the tracker would look like a device talking
+        # gibberish rather than a buffer that needs emptying.
+        reset_input()
+
+
+def restore_console_speed(session: Session, step: TransferStep) -> bool:
+    """Put both ends back, device first again, and confirm it took.
+
+    ``unset BAUD`` is Cisco's documented way back to the 9600 default and is
+    preferred over setting it explicitly, because it restores whatever the
+    platform default actually is rather than what this code assumes it to be.
+    """
+    session.send(b"unset BAUD\r")
+
+    setter = getattr(session.transport, "set_baud", None)
+    if setter is None:
+        return False
+    setter(step.from_baud)
+    reset_input = getattr(session.transport, "reset_input", None)
+    if reset_input is not None:
+        reset_input()
+
+    session.send(b"\r")
+    session.settle(timeout=15.0)
+    return bool(session.tracker.buffer)
 
 
 def _transfer(
@@ -149,15 +210,18 @@ def _transfer(
     image_path: Path,
     step: TransferStep,
     rendered: str,
+    image: Fingerprint,
+    on_progress: ProgressReporter | None = None,
 ) -> tuple[str, ExitCode]:
-    """Raise the console speed, transfer, and always put it back.
+    """Raise the console speed, transfer, prove the boot, and put it all back.
 
-    The compensation runs in a ``finally``: a failed transfer that left the
+    The restoration runs in a ``finally``: a failed transfer that left the
     console at 115200 would make the device look dead to the next person who
-    connects at 9600.
+    connects at 9600 -- and they would have no way of knowing why.
     """
     with journal_for(port, "recover_image") as (_connection, journal):
         raised = None
+        restored = False
         transport = session.transport
         setter = getattr(transport, "set_baud", None)
         mutations = step.mutations()
@@ -171,24 +235,32 @@ def _transfer(
             )
 
         try:
-            if mutations and setter is not None:
+            if mutations:
                 with journal.attempting(mutations[0]) as attempted:
-                    setter(step.to_baud)
-                    reset_input = getattr(transport, "reset_input", None)
-                    if reset_input is not None:
-                        reset_input()
+                    raise_console_speed(session, step)
                 journal.observed(attempted)
                 raised = attempted
 
-            session.send(b"copy xmodem: flash:\r")
+            # The destination filename is required. `copy xmodem: flash:` with
+            # no name is rejected by the bootloader, which is the sort of thing
+            # only a real device tells you.
+            session.send(
+                f"copy xmodem: flash:{step.filename}\r".encode("ascii")
+            )
             session.settle(timeout=30.0)
 
-            progress = Progress(total_bytes=step.size_bytes)
+            progress = Progress(
+                total_bytes=step.size_bytes, started_at=0.0, now=0.0
+            )
+
+            def report(sent: int, total: int) -> None:
+                progress.sent_bytes = sent
+                progress.total_bytes = total
+                if on_progress is not None:
+                    on_progress(progress)
+
             outcome = xmodem.send_file(
-                image_path,
-                transport.read,
-                transport.write,
-                progress=lambda sent, _total: setattr(progress, "sent_bytes", sent),
+                image_path, transport.read, transport.write, progress=report
             )
         except xmodem.XmodemError as exc:
             journal.finish("failed")
@@ -196,15 +268,17 @@ def _transfer(
                 f"{rendered}\n\nTransfer failed: {exc}", ExitCode.TRANSFER_FAILED
             ) from exc
         finally:
-            if raised is not None and setter is not None:
-                setter(step.from_baud)
-                journal.compensated(raised)
+            if raised is not None:
+                restored = restore_console_speed(session, step)
+                if restored:
+                    journal.compensated(raised)
 
-        journal.finish("completed")
+        proof = prove(session, image, console_restored=restored or not mutations)
+        journal.finish("completed" if proof.proven else "transferred_unverified")
 
+    code = ExitCode.SUCCESS if proof.proven else ExitCode.STATE_UNCERTAIN
     return (
         f"{rendered}\n\nTransfer complete.\n{outcome.render()}\n\n"
-        f"Boot the image and check the running version before relying on it: "
-        f"a completed transfer proves the bytes arrived, not that they boot.",
-        ExitCode.SUCCESS,
+        f"{proof.render()}",
+        code,
     )

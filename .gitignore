@@ -26,3 +26,6 @@ dist/
 .hypothesis/
 .coverage
 htmlcov/
+
+# Meta-documentation about building the project is not project documentation.
+*.docx

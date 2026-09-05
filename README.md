@@ -1,8 +1,23 @@
 # ciscoyoke
 
+[![CI](https://github.com/Ryan-Clinton/ciscoyoke/actions/workflows/ci.yml/badge.svg)](https://github.com/Ryan-Clinton/ciscoyoke/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-green.svg)](LICENSE)
+[![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)](#status)
+
 **A rescue bench for old Cisco hardware.**
 Discover, diagnose, preserve, recover and commission Cisco gear from the serial
 console — with no management IP.
+
+```
+   unknown device                    ciscoyoke scan
+         ↓                                 ↓
+   bootloader found      ──►    archive whatever can be preserved
+         ↓                                 ↓
+   no bootable image     ──►    guided recovery, image supplied by you
+         ↓                                 ↓
+   IOS boots, version proven      lab verify catches the wrong cable
+```
 
 > Take an unknown Cisco box from "pulled from a rack / bought second-hand" to a
 > known-good, documented lab node — from the serial console, with no management
@@ -33,7 +48,9 @@ netmiko, and it is not trying to be ConsolePi.
 
 ## Status
 
-**Pre-alpha, but feature-complete against [the specification](docs/SPEC.md).**
+**Pre-alpha.** Every command in [the specification](docs/SPEC.md) exists and is
+tested. **None of it has met a Cisco device** — see
+[hardware support](#hardware-support), which is the honest limit on all of it.
 
 Read-only — safe against hardware in unknown condition:
 
@@ -53,14 +70,19 @@ Destructive — leased, journalled, dry-run by default, `--confirm` required:
 | | |
 | --- | --- |
 | `ciscoyoke reset PORT` | erase to a known-empty baseline |
-| `ciscoyoke recover access PORT` | platform-aware password recovery |
-
-| `ciscoyoke recover image PORT --image F` | XMODEM rescue for a device with no bootable image |
+| `ciscoyoke recover access PORT` | platform-aware password recovery, including the guided Mode-button sequence |
+| `ciscoyoke recover image PORT --image F` | XMODEM rescue for a device with no bootable image, ending in boot proof |
 | `ciscoyoke lab apply LABFILE` | push per-device configuration |
 | `ciscoyoke login PORT` | authenticate with credentials you already have |
 
 Plus `ciscoyoke console`, `ciscoyoke resolve` (reconcile an interrupted
 recovery against the device) and `ciscoyoke support-bundle`.
+
+**Deliberately not implemented: TFTP image delivery.** The provider, its
+constraints and the ROMMON variable generation exist, but the command does not
+collect the addressing a ROMMON TFTP boot needs, so `--via tftp` refuses with an
+explanation rather than half-configuring a stranded device. `--via xmodem` is
+the working path.
 
 **One thing is deliberately not implemented: TFTP image delivery.** The provider,
 the constraints and the ROMMON variable generation all exist, but the command
@@ -117,6 +139,12 @@ def test_state_detection_is_chunk_invariant(transcript, splits):
 a `FakeDevice` replays one as a serial port and asserts the code transmits what
 the real session transmitted. CI runs the real engine against real recorded
 device behaviour on a machine with nothing plugged in.
+
+**A transfer is not a rescue until the device boots.** Image recovery ends in a
+boot proof with four conditions: the image loaded, IOS reached a prompt, `show
+version` reports the expected image, and the console speed was put back. Falling
+short of all four reports `booted_unverified` rather than success — a completed
+transfer proves the bytes arrived, not that they boot.
 
 **Confidence is ordinal, never a float.** `0.98` would look scientific without
 being calibrated against anything. Until there is a labelled corpus, the schema

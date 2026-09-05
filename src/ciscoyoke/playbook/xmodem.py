@@ -229,8 +229,7 @@ def send(
         if progress is not None:
             progress(sent, total)
 
-    write(bytes([Control.EOT]))
-    _read_response(read, clock, sleep, block_timeout)
+    _finish(write, read, clock, sleep, block_timeout, max_retries)
 
     return TransferOutcome(
         sent_bytes=sent,
@@ -239,6 +238,47 @@ def send(
         retries=retries,
         used_crc=use_crc,
         elapsed=clock() - started,
+    )
+
+
+def _finish(
+    write: Writer,
+    read: Reader,
+    clock: Callable[[], float],
+    sleep: Callable[[float], None],
+    timeout: float,
+    max_retries: int,
+) -> None:
+    """Close the transfer, and require the receiver to agree that it closed.
+
+    The classic termination is ``EOT`` answered with ``ACK``, but many
+    receivers -- including several Cisco bootloaders -- NAK the first ``EOT``
+    and acknowledge the second. Both are accepted; silence is not.
+
+    Treating an unanswered ``EOT`` as success was the previous behaviour, and
+    it is optimism in the worst possible place: after ninety minutes, on a
+    device whose only image may have just been deleted, "probably fine" is not
+    a thing to report as a completed transfer.
+    """
+    for _ in range(max_retries):
+        write(bytes([Control.EOT]))
+        response = _read_response(read, clock, sleep, timeout)
+
+        if response == Control.ACK:
+            return
+        if response == Control.CAN:
+            raise XmodemCancelledError(
+                "receiver cancelled at end of transfer; the image on the "
+                "device is incomplete"
+            )
+        # A NAK here asks for the EOT again, which is a legitimate exchange.
+        # Anything else -- including nothing at all -- is retried the same way,
+        # because the distinction does not change what we should do next.
+
+    raise XmodemError(
+        "the receiver never acknowledged the end of transfer. Every block was "
+        "accepted, but the device has not confirmed it wrote the file, so the "
+        "image must not be assumed usable. Check the device before booting it."
     )
 
 
