@@ -84,12 +84,6 @@ collect the addressing a ROMMON TFTP boot needs, so `--via tftp` refuses with an
 explanation rather than half-configuring a stranded device. `--via xmodem` is
 the working path.
 
-**One thing is deliberately not implemented: TFTP image delivery.** The provider,
-the constraints and the ROMMON variable generation all exist, but the command
-does not collect the addressing a ROMMON TFTP boot needs, so `--via tftp` refuses
-with an explanation rather than half-configuring a device. `--via xmodem` is the
-working path.
-
 ## Hardware support
 
 Nothing is claimed until it is earned — and nothing has been earned yet.
