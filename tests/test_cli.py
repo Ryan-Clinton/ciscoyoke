@@ -48,20 +48,46 @@ def test_doctor_runs_and_emits_json(capsys: pytest.CaptureFixture[str]) -> None:
     assert isinstance(payload["checks"], list)
 
 
-def test_doctor_human_output_offers_alternatives_when_tftp_is_blocked(
+def test_doctor_never_recommends_running_elevated(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A blocked privileged port must never produce a 'run as root' suggestion.
+    """Diagnostics must never tell anyone to escalate.
 
-    This process handles transcripts, journals and firmware images; escalating
-    all of it to bind one UDP port is the wrong trade, so the alternatives are
-    an external server or XMODEM.
+    This process handles transcripts, journals and firmware images; running all
+    of it as root to bind one UDP port is the wrong trade, so the alternatives
+    offered are an external TFTP server or XMODEM.
+
+    The check is for a *recommendation*, not for the word. On Linux the port
+    advice deliberately reads "add your user to the dialout group rather than
+    using sudo" -- steering away from elevation while naming it is exactly the
+    behaviour wanted, and an earlier version of this test banned the substring
+    and so failed on the very message it should have been protecting.
     """
     main(["doctor"])
-    output = capsys.readouterr().out
+    output = capsys.readouterr().out.lower()
 
-    assert "sudo" not in output.lower()
-    assert "as root" not in output.lower()
+    recommendations = (
+        "use sudo",
+        "using sudo to",
+        "run with sudo",
+        "sudo ciscoyoke",
+        "run as root",
+        "as administrator",
+        "elevated privileges",
+    )
+    for phrase in recommendations:
+        assert phrase not in output, f"doctor recommended elevation: {phrase!r}"
+
+
+def test_doctor_steers_away_from_elevation_where_it_mentions_it() -> None:
+    """Wherever elevation is named, it is named as the wrong answer."""
+    from ciscoyoke.doctor import check_port_permissions
+    from ciscoyoke.transport.identity import PortIdentity
+
+    check = check_port_permissions((PortIdentity(device="/dev/ttyS-absent"),))
+
+    if "sudo" in check.detail.lower():
+        assert "rather than" in check.detail.lower()
 
 
 def test_ports_reports_absence_as_a_result_not_a_crash(

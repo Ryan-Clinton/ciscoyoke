@@ -28,9 +28,9 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -44,18 +44,38 @@ jobs:
       - name: Smoke test the CLI
         # Exercises the real entry point through the runner's actual console
         # encoding, which is what the captured-stdout unit tests cannot do.
+        #
+        # `ports` exits 10 (DEVICE_NOT_FOUND) on a runner with no serial
+        # adapters, which is the documented contract rather than a fault -- so
+        # the accepted codes are listed explicitly. Anything outside the list,
+        # including a crash, still fails the build.
+        shell: bash
         run: |
-          ciscoyoke --version
-          ciscoyoke doctor
-          ciscoyoke --json ports
+          set -u
+          expect_code() {
+            local allowed="$1"; shift
+            set +e
+            "$@" >/dev/null
+            local code=$?
+            set -e
+            case " $allowed " in
+              *" $code "*) echo "ok: $* -> $code" ;;
+              *) echo "::error::$* exited $code, expected one of: $allowed"; exit 1 ;;
+            esac
+          }
+          expect_code "0" ciscoyoke --version
+          expect_code "0" ciscoyoke doctor
+          expect_code "0 10" ciscoyoke --json ports
+          expect_code "0 10" ciscoyoke --json scan
+          expect_code "0" ciscoyoke ports labels
 
   lint:
     name: Lint and types
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -73,7 +93,7 @@ jobs:
     name: No raw transcripts committed
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Refuse raw recordings
         # Raw .ytx files are private by definition and may contain a previous
