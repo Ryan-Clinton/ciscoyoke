@@ -77,8 +77,18 @@ class Compatibility:
 
 
 # Filename platform tokens mapped to the device model families they belong to.
+#
+# An absent family is not neutral: `_platform_matches` returns False for one it
+# does not know, which reads as a positive mismatch and blocks the transfer. So
+# a missing entry means "this platform's own image is rejected as wrong", which
+# is worse than having no opinion. Anything plausibly encountered belongs here.
 _PLATFORM_FAMILIES: dict[str, tuple[str, ...]] = {
     "c1700": ("1720", "1721", "1751", "1760", "CISCO1760", "CISCO1721"),
+    # Fixed-configuration 1800s share one image prefix across the whole range,
+    # which is why several models map to a single token.
+    "c181x": ("1801", "1802", "1803", "1811", "1812"),
+    "c180x": ("1801", "1802", "1803"),
+    "c1841": ("1841",),
     "c2600": ("2610", "2611", "2620", "2621", "2650", "2651"),
     "c2800": ("2801", "2811", "2821", "2851"),
     "c2950": ("WS-C2950",),
