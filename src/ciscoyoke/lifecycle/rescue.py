@@ -54,9 +54,43 @@ _ADVICE: dict[Recommendation, str] = {
     Recommendation.IMAGE_RESCUE: "ciscoyoke recover image {target} --image <ios.bin>",
     Recommendation.RESET: "ciscoyoke reset {target}",
     Recommendation.INVESTIGATE: "ciscoyoke console {target}",
-    Recommendation.CHECK_CABLE: "ciscoyoke doctor --port {target}",
+    # Silence is a wrong speed as often as a wrong cable: listen at every rate
+    # first, then check the host side. (This once suggested `doctor --port`,
+    # an option that never existed -- tests now parse every advised command.)
+    Recommendation.CHECK_CABLE: "ciscoyoke sweep {target}   then: ciscoyoke doctor",
     Recommendation.STOP: "Stopping: see the warning above before continuing.",
 }
+
+#: The short form ``scan`` shows per device, from state alone. ``rescue`` gives
+#: the full reasoning; this is the one-word version for a table of many.
+_NEXT_FROM_STATE: dict[State, str] = {
+    State.PRIV_EXEC: "ready",
+    State.USER_EXEC: "ready",
+    State.CONFIG_MODE: "ready",
+    State.PAGER: "ready",
+    State.SETUP_DIALOG: "unconfigured",
+    State.AUTOINSTALL: "unconfigured",
+    State.PRESS_RETURN: "rescue",
+    State.LOGIN_USERNAME: "recover access",
+    State.LOGIN_PASSWORD: "recover access",
+    State.ENABLE_PASSWORD: "recover access",
+    State.BOOTLOADER: "rescue",
+    State.ROMMON: "rescue",
+    State.BOOTING: "wait, rescan",
+    State.DESTRUCTIVE_RECOVERY_GUARD: "stop: recovery disabled",
+    State.UNKNOWN: "sweep",
+    State.SILENT: "sweep",
+}
+
+
+def next_step(state: State) -> str:
+    """One or two words saying what a device in this state needs next.
+
+    Derived from what ``scan`` already observed, nothing new is read. Where the
+    state alone cannot decide -- a bootloader may need an image or only a
+    password -- the answer is ``rescue``, which can.
+    """
+    return _NEXT_FROM_STATE.get(state, "rescue")
 
 
 @dataclass(frozen=True, slots=True)

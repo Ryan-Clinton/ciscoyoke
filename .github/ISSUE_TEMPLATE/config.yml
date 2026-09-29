@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: How to test on your hardware
+    url: https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/HARDWARE-TESTING.md
+    about: What the support marks mean, and how to send a useful report.

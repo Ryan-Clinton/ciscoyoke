@@ -1,0 +1,28 @@
+name: Bug
+description: Something in ciscoyoke itself is wrong (for a problem on a specific device, use Hardware report)
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: The command and its output
+      description: Paste the command you ran and what it printed. Remove anything private.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: ciscoyoke doctor
+      description: Output of `ciscoyoke --version` and `ciscoyoke doctor`.
+      render: text
+    validations:
+      required: true

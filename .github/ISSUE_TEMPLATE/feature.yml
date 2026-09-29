@@ -1,0 +1,23 @@
+name: Idea
+description: Something ciscoyoke could do, or do better
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ciscoyoke covers everything *before* a device has a working IP address. Once it does, Netmiko, Nornir, Ansible and scrapli take over, so ideas that need a reachable device usually belong there.
+
+  - type: textarea
+    id: situation
+    attributes:
+      label: The situation
+      description: What were you trying to do, with what hardware? A real story beats a feature list.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+    validations:
+      required: true

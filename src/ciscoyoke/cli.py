@@ -19,6 +19,7 @@ from pathlib import Path
 
 from ciscoyoke import __version__, cli_extra, commands, doctor
 from ciscoyoke.identify.probe import Intake, intake
+from ciscoyoke.lifecycle.rescue import next_step
 from ciscoyoke.result.exits import ExitCode
 from ciscoyoke.result.schema import Result
 from ciscoyoke.session import Session
@@ -271,7 +272,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
             devices.append(entry)
             rows.append(
                 f"{identity.device:<10} {identity.adapter:<10} "
-                f"{'unavailable':<13} {blank:<14} {blank:<8} {blank}"
+                f"{'unavailable':<13} {blank:<16} {blank:<6} {blank:<10} see below"
             )
             advice.append(f"{identity.device}  {exc}")
             continue
@@ -283,15 +284,17 @@ def cmd_scan(args: argparse.Namespace) -> int:
         rows.append(
             f"{identity.device:<10} {identity.adapter:<10} "
             f"{result.observation.state.value:<13} "
-            f"{result.facts.model.value or blank:<14} "
-            f"{args.baud:<8} {result.observation.confidence.value}"
+            f"{result.facts.model.value or blank:<16} "
+            f"{args.baud:<6} {result.observation.confidence.value:<10} "
+            f"{next_step(result.observation.state)}"
         )
+        entry["next"] = next_step(result.observation.state)
         if result.note:
             advice.append(f"{identity.device}  {result.note}")
 
     header = (
         f"{'PORT':<10} {'ADAPTER':<10} {'STATE':<13} "
-        f"{'MODEL':<14} {'BAUD':<8} CONFIDENCE"
+        f"{'MODEL':<16} {'BAUD':<6} {'CONFIDENCE':<10} NEXT"
     )
     lines = ["", f"{len(identities)} endpoints found", "", header, *rows]
     if advice:

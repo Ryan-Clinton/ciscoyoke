@@ -2,235 +2,233 @@
 
 [![CI](https://github.com/Ryan-Clinton/ciscoyoke/actions/workflows/ci.yml/badge.svg)](https://github.com/Ryan-Clinton/ciscoyoke/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![Licence: MIT](https://img.shields.io/badge/licence-MIT-green.svg)](LICENSE)
-[![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)](#status)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-green.svg)](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/LICENSE)
+[![Status: early alpha](https://img.shields.io/badge/status-early%20alpha-orange.svg)](#hardware-tested-and-wanted)
 
-**A rescue bench for old Cisco hardware.**
-Discover, diagnose, preserve, recover and commission Cisco gear from the serial
-console — with no management IP.
+**Rescue old Cisco hardware from the serial console.**
 
-```
-   unknown device                    ciscoyoke scan
-         ↓                                 ↓
-   bootloader found      ──►    archive whatever can be preserved
-         ↓                                 ↓
-   no bootable image     ──►    guided recovery, image supplied by you
-         ↓                                 ↓
-   IOS boots, version proven      lab verify catches the wrong cable
-```
-
-> Take an unknown Cisco box from "pulled from a rack / bought second-hand" to a
-> known-good, documented lab node — from the serial console, with no management
-> IP required.
-
----
-
-## The gap
-
-Every network automation tool in common use — netmiko, scrapli, Nornir, NAPALM,
-Ansible — connects over SSH or telnet, and assumes the device already has an IP
-address, a reachable management interface, and credentials that work.
-
-A second-hand Cisco device has none of those. It arrives with a stranger's
-configuration, an unknown enable password, an unverified IOS version, possibly
-no working boot image at all. Everything between "box arrives from eBay" and
-"normal automation can reach it" is done by hand: a console cable, a terminal
-emulator, and a Cisco tech note from 2007 in another window.
+Bought a Catalyst on eBay? Inherited a switch with somebody else's password?
+Found one in a store room that nobody has the login for? Got a `switch:` prompt
+and no working IOS? Not even sure which COM port the cable is on?
 
 ```
-   eBay box  ──►  [ ciscoyoke ]  ──►  device has an IP  ──►  [ netmiko, Nornir, Ansible ]
-                  console/serial                              SSH / telnet
-                  no IP required                              IP required
+   unknown / locked / broken                       known-good lab device
+            │                                               ▲
+            └──── console cable ──►  ciscoyoke  ────────────┘
+                                   no IP address needed
 ```
 
-ciscoyoke hands off the moment a device has an address. It is not trying to be
-netmiko, and it is not trying to be ConsolePi.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Ryan-Clinton/ciscoyoke/main/docs/demo/2950-recovery.svg" alt="A real Catalyst 2950 going from the Mode-button bootloader to an unlocked Switch# prompt, replayed from a committed hardware recording" width="100%">
+</p>
+<p align="center"><sub>Not a mock-up: a real WS-C2950G-24-EI, replayed from
+<a href="https://github.com/Ryan-Clinton/ciscoyoke/blob/main/tests/fixtures/hw-switch-2950-recover-no-restore.ytx.pub">its committed recording</a>
+with the long silences shortened. Serial numbers and MAC scrubbed.</sub></p>
 
-## Status
+> **Early alpha.** Run end to end on a real Catalyst 2950; the 2960 family is
+> implemented from Cisco's documentation and **wants testers**. See
+> [hardware](#hardware-tested-and-wanted).
 
-**Pre-alpha.** Every command in [the specification](docs/SPEC.md) exists and is
-tested. **None of it has met a Cisco device** — see
-[hardware support](#hardware-support), which is the honest limit on all of it.
+## Try it
 
-Read-only — safe against hardware in unknown condition:
+```bash
+pipx install git+https://github.com/Ryan-Clinton/ciscoyoke   # works today
+# pipx install ciscoyoke                                      # from PyPI, once 0.1.0a1 is released
 
-| | |
-| --- | --- |
-| `ciscoyoke doctor` | host serial, permission and TFTP-bind diagnostics |
-| `ciscoyoke ports` | USB adapter identity and how stable it is |
-| `ciscoyoke scan` | identify every attached device, passively |
-| `ciscoyoke intake PORT` | identify one device without changing it |
-| `ciscoyoke rescue PORT` | **the front door** — diagnose, preserve, recommend |
-| `ciscoyoke health PORT` | POST, flash, memory and config-register checks |
-| `ciscoyoke archive PORT` | preserve what the device will disclose |
-| `ciscoyoke transcript scrub` | raw recording → shareable fixture (`--source` records `hardware:` / `synthetic:` provenance) |
-| `ciscoyoke transcript replay FILE` | every state the tracker concludes from a recording, the evidence for each, and the prompt it stalled on |
-| `ciscoyoke report` | package the last run into one shareable zip: scrubbed transcript with configuration output removed, the failure record, host diagnostics |
+ciscoyoke doctor          # is the cable and adapter OK?
+ciscoyoke scan            # what is on every serial port?
+ciscoyoke rescue COM4     # what is this device, and what does it need?
+```
 
-Destructive — leased, journalled, dry-run by default, `--confirm` required:
+**Most people only need `ciscoyoke rescue`.** It identifies the device, works
+out its state, preserves whatever it can read, and tells you the safest next
+command — then stops, because everything after that changes the device and is
+your decision.
 
-| | |
-| --- | --- |
-| `ciscoyoke reset PORT` | erase to a known-empty baseline. On a Catalyst that includes `vlan.dat`, any configuration left in flash under another name (`config.old`, `*.cfg`, a moved-aside `config.text.ciscoyoke`) and a non-default `boot config-file`. Each file is read into the archive before it is deleted, and the deletions are proven from a fresh listing before the reload |
-| `ciscoyoke recover access PORT` | platform-aware password recovery, including the guided Mode-button sequence. On a Catalyst it reads `CONFIG_FILE` and the flash listing before renaming anything, and confirms the rename from a fresh listing. `--no-restore` stops at the privileged prompt with the old configuration still aside, so `reset` can preserve and delete it instead of loading the previous owner's logins back in. The platform comes from the device, else from the model last seen booting on the same adapter, else `--platform router\|catalyst`; a stated platform the device contradicts is refused |
-| `ciscoyoke recover image PORT --image F` | XMODEM rescue for a device with no bootable image, ending in boot proof |
-| `ciscoyoke lab apply LABFILE` | push per-device configuration |
-| `ciscoyoke login PORT` | authenticate with credentials you already have |
+## Three real sessions
 
-Plus `ciscoyoke console`, `ciscoyoke resolve` (reconcile an interrupted or
-failed run against the device: baud changes by probing both speeds, flash
-renames and deletions by listing flash) and `ciscoyoke support-bundle`.
+These are real output from the bench 2950, abridged.
 
-Every destructive run saves a raw, private transcript under the state
-directory (`%LOCALAPPDATA%\ciscoyoke\transcripts` on Windows). A run that
-failed with a change sent but never observed blocks the next operation on that
-device until `resolve` has looked.
-
-**Deliberately not implemented: TFTP image delivery.** The provider, its
-constraints and the ROMMON variable generation exist, but the command does not
-collect the addressing a ROMMON TFTP boot needs, so `--via tftp` refuses with an
-explanation rather than half-configuring a stranded device. `--via xmodem` is
-the working path.
-
-## Hardware support
-
-Nothing is claimed until it is earned.
-
-**One real device so far: a WS-C2950G-24-EI.** Password recovery and reset
-have run against it end to end, and it found six defects the synthetic
-fixtures could not: LF-CR line endings, a rename that failed silently over an
-existing `config.old`, and a log message hiding an IOS question among them.
-Three of its sessions are committed as scrubbed `hardware:` fixtures (`hw-*`),
-replayed by `tests/test_hardware_fixtures.py`. Everything else in
-`tests/fixtures` is `synthetic:` provenance: constructed from Cisco's published
-output to pin the parsers and the state machine. See
-[tests/fixtures/README.md](tests/fixtures/README.md).
+**A switch nobody knows anything about**
 
 ```
-● Hardware verified      run against real hardware by a maintainer
-◐ Replay verified        passes against a committed transcript, no hardware run
-○ Documentation-derived  implemented from official docs, never executed
+$ ciscoyoke intake COM4
+
+State:        user_exec (observed/high)
+Model:        WS-C2950G-24-EI
+IOS version:  12.1(9)EA1
+Config reg:   0xF
+
+identified from show version
+No destructive action taken.
+```
+
+**A locked switch**, with a previous owner's console login and enable secret:
+
+```
+$ ciscoyoke recover access COM4 --no-restore --confirm
+
+Platform from memory: WS-C2950G-24-EI (seen on this adapter, from intake)
+
+HUMAN ACTION REQUIRED
+  Unplug the switch. Hold the MODE button down, plug the power back in,
+  and release it when the STAT LED goes out (about 5 seconds).
+  ✓ observed: bootloader
+
+  IOS loads config.text (the default); it will be renamed to config.text.ciscoyoke
+
+Access recovered, with the previous configuration left aside as
+flash:config.text.ciscoyoke and not loaded. The device is unconfigured and
+at a privileged prompt.
+```
+
+**Then a clean baseline**, with everything it deletes read into an archive first:
+
+```
+$ ciscoyoke reset COM4 --confirm
+
+  ✓ file_backup.cfg        ✓ file_config.old        ✓ file_config.text.ciscoyoke
+
+  ! delete flash:vlan.dat (destroys the VLAN database)
+  ! delete flash:backup.cfg (a previous owner's configuration)
+  ! delete flash:config.old (a previous owner's configuration)
+  ! delete flash:config.text.ciscoyoke (a previous owner's configuration)
+    dir flash: (confirm every deletion)
+
+Reset complete.
+```
+
+A fourth, **image rescue** for a device with no bootable IOS (XMODEM transfer,
+then proof that IOS actually boots), is implemented but has not met hardware yet.
+
+## Where it fits
+
+ciscoyoke doesn't replace network automation. It gets equipment *into* it.
+
+```
+dead / unknown / locked
+         │
+         ▼
+     ciscoyoke           serial console, no IP required
+         │
+         ▼
+known device with an IP
+         │
+         ├── Netmiko
+         ├── Nornir
+         ├── Ansible
+         └── scrapli     SSH / telnet, IP required
+```
+
+Every mainstream tool assumes the device already has an address, a reachable
+management interface and credentials that work. A second-hand box has none of
+those, and everything between "arrived from eBay" and "automation can reach it"
+is usually done by hand with a terminal emulator and a Cisco tech note from 2007.
+
+## Hardware: tested and wanted
+
+Support is claimed only when it's earned, and every mark says how:
+
+```
+● Hardware verified      run against a real device; the recording is committed
+○ Documentation-derived  implemented from Cisco's published procedure, never run
 — Not yet attempted
 ```
 
-| Platform | Intake | Access recovery | Image rescue | Reset |
+| Device | Identify | Password recovery | Reset | We need |
 | --- | --- | --- | --- | --- |
-| Cisco 1760 | — | — | — | — |
-| Catalyst 2950 | ● [cold boot](tests/fixtures/hw-switch-2950-cold-boot-locked.ytx.pub) | ● [no-restore](tests/fixtures/hw-switch-2950-recover-no-restore.ytx.pub) | — | — ¹ |
-| Catalyst 3550 | — | — | — | — |
-| Catalyst 2960 | ○ | ○ | — | ○ |
-| Catalyst 2960-S / X / Plus | ○ | ○ | — | ○ |
+| Catalyst 2950 | ● | ● | — ¹ | more variants |
+| Catalyst 2960 | ○ | ○ | ○ | **a tester** |
+| Catalyst 2960-S / X / Plus | ○ | ○ | ○ | **a tester** (USB console too) |
+| Catalyst 3550 / 3560 / 3750 | — | — | — | **a tester**, or a profile from Cisco's docs ² |
+| Cisco 1700 / 1800 / 1841 routers | — | — | — | **a tester** |
 
-Every ● and ◐ links to the transcript fixture that earned it. The ○ rows come
-from `src/ciscoyoke/platform_profiles.py`, which holds one entry per Catalyst
-family (when to release Mode, whether `load_helper` exists, how long a boot
-takes, what console port the front panel has) and names the Cisco document each
-entry was taken from. A 2960 is told to release Mode once SYST has gone amber
-and then green, not the 2950's "when STAT goes out"; IOS 15's "terminate
-autoinstall?" is answered yes. A Catalyst family with no entry gets Cisco's
-generic procedure with longer waits, and its destructive commands need
-`--accept-unverified`.
+¹ Reset has run end to end on the 2950, but its only recording held a previous
+owner's configuration, so it isn't published and the mark isn't claimed.
+² No model-specific profile yet: these get Cisco's general procedure with
+longer waits, and destructive commands ask for `--accept-unverified`.
+Per-mark evidence: [docs/HARDWARE-TESTING.md](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/HARDWARE-TESTING.md).
 
-### When it fails on your hardware
-
-Every destructive run records itself. When one fails it also writes down what a
-fix needs — the step, what it expected, what it saw, the last line that looked
-like the device waiting for an answer, the tracker's state history, and the
-adapter's chipset — and says so:
+**Got one of these?** Run `ciscoyoke rescue COM4`. If anything goes wrong:
 
 ```
-ciscoyoke report          # one zip: scrubbed run, failure record, host diagnostics
+ciscoyoke report     # one zip: the run scrubbed, configuration output removed,
+                     # what it expected, what it saw, and your adapter
 ```
 
-Configuration output is cut out of the report rather than scrubbed, because a
-scrubber cannot know a banner names somebody. Read the transcript inside it,
-then attach the zip to a [hardware report](../../issues/new?template=hardware-report.yml)
-with the model from the label and what the LEDs did. On this side,
-`ciscoyoke transcript replay` shows exactly where the tracker lost the thread,
-and the transcript becomes the fixture for the failing test that the fix makes
-pass — the same loop that turned the 2950's first failures into
-`tests/test_hardware_fixtures.py`.
+and attach it to a [hardware report](https://github.com/Ryan-Clinton/ciscoyoke/issues/new?template=hardware-report.yml).
+That's the most useful contribution there is, and it needs no Python.
 
-¹ Reset has run end to end on the 2950, but its recording is not committed: it
-had to read the previous owner's configuration into the archive before deleting
-it, and that configuration is not ours to publish. The mark waits for a reset
-recorded against a lab-only configuration.
+## Real sessions become tests
 
-## The interesting parts
-
-**State is inferred from an unstructured byte stream.** A serial console has no
-connection event, no handshake and no protocol — you join a stream already in
-progress and have to work out where the device is by poking it. Detection splits
-into pure context-free *signals* and a contextual *tracker* that weighs them
-into a conclusion carrying a basis, a confidence and its evidence.
-
-**Chunk-boundary correctness is a property, not a hope.** Serial data arrives in
-arbitrary pieces, so a prompt can straddle two reads — `Router` in one, `#` in
-the next. The tracker evaluates after every byte, and Hypothesis asserts that
-any partition of any transcript yields the same state sequence as the whole:
-
-```python
-@given(transcript=..., splits=st.lists(st.integers(1, 4096)))
-def test_state_detection_is_chunk_invariant(transcript, splits):
-    assert states(fragment(transcript, splits)) == states([transcript])
+```
+real Cisco hardware
+       │
+       ▼
+serial transcript        recorded by every destructive run
+       │
+       ▼
+scrub secrets            passwords, keys, addresses, serials; config output removed
+       │
+       ▼
+fixture committed        tests/fixtures/hw-*.ytx.pub
+       │
+       ▼
+CI replays it forever    on Windows, macOS and Linux, with nothing plugged in
 ```
 
-**The test suite needs no hardware.** Sessions record to a versioned transcript;
-a `FakeDevice` replays one as a serial port and asserts the code transmits what
-the real session transmitted. CI runs the real engine against real recorded
-device behaviour on a machine with nothing plugged in.
+309 tests passed before the first real switch was connected. It still found
+defects none of them could — LF-CR line endings, a rename that failed silently,
+a log message hiding an IOS question — and each now has a test built from what
+the real switch sent, most of them replaying its recording directly.
 
-**Catalyst and router recovery are different programs, not dialects.** A
-`switch:` bootloader takes `set BAUD` and `copy xmodem: flash:<file>`; a router
-`rommon>` takes neither, carrying the rate as a flag on `xmodem -c <file>`, and
-prints a differently-shaped flash listing. Each has its own driver, and a device
-matching neither is refused rather than handed a procedure written for something
-else.
+## Designed not to brick your switch
 
-**A transfer is not a rescue until the device boots.** Image recovery ends in a
-boot proof with four conditions: the image loaded, IOS reached a prompt, `show
-version` reports the expected image, and the console speed was put back. Falling
-short of all four reports `booted_unverified` rather than success — a completed
-transfer proves the bytes arrived, not that they boot. The image check compares
-the *filename IOS reports running*, not just the version, because the same
-version ships in several feature sets.
+- Destructive commands are **dry runs** until you add `--confirm`.
+- Configuration is **read into an archive before anything deletes it**, and the
+  archive says plainly what it couldn't read.
+- Every change is **journalled before it's sent**, so an interrupted run can be
+  reconciled against the device (`ciscoyoke resolve`).
+- Renames and deletions are **proven from a fresh flash listing**, not assumed
+  from the prompt coming back.
+- An image rescue **isn't a success until IOS boots** the image you supplied.
+- Recordings stay **private until scrubbed**; CI refuses a raw one.
 
-**Confidence is ordinal, never a float.** `0.98` would look scientific without
-being calibrated against anything. Until there is a labelled corpus, the schema
-carries `basis` / `confidence` / `evidence`, which is what the tool actually
-knows.
+More: [docs/SAFETY.md](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/SAFETY.md) · [threat model](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/THREAT-MODEL.md) ·
+[architecture](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/ARCHITECTURE.md) · [specification](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/SPEC.md)
 
-**Raw and shareable transcripts are different formats.** A raw `.ytx` is private
-by default and *fails to load* as a test fixture; only a scrubbed `.ytx.pub`
-with recorded scrub provenance can be committed. Scrubbing reports what it
-found and states plainly that it cannot prove a transcript is clean.
+## Commands
 
-## Install
+| Look, change nothing | |
+| --- | --- |
+| `ciscoyoke rescue PORT` | **start here**: identify, preserve, recommend |
+| `ciscoyoke scan` | every serial port: state, model, and what each needs next |
+| `ciscoyoke doctor` | cable, adapter, permissions and driver checks |
+| `ciscoyoke intake PORT` / `health PORT` / `archive PORT` | identify / check / preserve one device |
+| `ciscoyoke capture PORT -o F` / `sweep PORT` | record a boot / find the line speed |
+| `ciscoyoke report` | package the last run for a bug report |
 
-```bash
-pipx install ciscoyoke     # not yet published
-```
+| Change the device (dry run unless `--confirm`) | |
+| --- | --- |
+| `ciscoyoke recover access PORT` | password recovery, guided through the Mode button or break |
+| `ciscoyoke reset PORT` | erase to a clean lab baseline |
+| `ciscoyoke recover image PORT --image F` | XMODEM rescue for a device with no bootable IOS |
+| `ciscoyoke lab apply LABFILE` | push per-device lab configuration |
 
-From a clone:
+Every option is in [docs/SAFETY.md](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/SAFETY.md) and `ciscoyoke <command> --help`.
 
-```bash
-python -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/pytest
-```
+## Contributing
 
-## Documentation
-
-- [Specification](docs/SPEC.md) — the design, its commitments, and what was
-  deliberately refused
-- [Threat model](docs/THREAT-MODEL.md) — what can go wrong and which invariant
-  prevents it
+You don't need to write Python. Testing on hardware you own, sending a
+`ciscoyoke report`, or adding a platform profile from Cisco's documentation are
+all real contributions. See [CONTRIBUTING.md](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/CONTRIBUTING.md).
 
 ## Firmware
 
 ciscoyoke **never hosts, mirrors, searches for or redistributes Cisco IOS
-images**, and no feature accepts a URL to fetch one from. It accepts a
-user-supplied image and automates transport and verification. Lawful
-entitlement to any image is the user's responsibility.
+images**, and no feature accepts a URL to fetch one from. It accepts an image
+you supply and automates transport and verification. Lawful entitlement to any
+image is your responsibility.
 
 ## Licence
 

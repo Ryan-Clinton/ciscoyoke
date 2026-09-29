@@ -4,15 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ciscoyoke"
-version = "0.1.0.dev0"
-description = "A rescue bench for old Cisco hardware — discover, diagnose, preserve and recover from the serial console, with no management IP."
+version = "0.1.0a1"
+description = "Rescue old Cisco hardware from the serial console: identify, preserve, recover and reset second-hand Catalysts and routers, with no management IP."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
 authors = [{ name = "Ryan Clinton" }]
-keywords = ["cisco", "serial", "console", "rommon", "recovery", "homelab", "ccna"]
+keywords = ["cisco", "cisco-ios", "catalyst", "serial", "serial-console", "console", "rommon", "recovery", "password-recovery", "homelab", "ccna", "network-automation", "xmodem"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: System Administrators",
     "License :: OSI Approved :: MIT License",
@@ -48,9 +48,31 @@ ciscoyoke = "ciscoyoke.cli:main"
 [project.urls]
 Homepage = "https://github.com/Ryan-Clinton/ciscoyoke"
 Specification = "https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/SPEC.md"
+Changelog = "https://github.com/Ryan-Clinton/ciscoyoke/blob/main/CHANGELOG.md"
+Issues = "https://github.com/Ryan-Clinton/ciscoyoke/issues"
+"Hardware reports" = "https://github.com/Ryan-Clinton/ciscoyoke/issues/new?template=hardware-report.yml"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ciscoyoke"]
+
+# An allowlist, not the default "everything not gitignored": a local build once
+# swept an untracked personal PDF from docs/ into the source archive. Only what
+# is named here can reach PyPI.
+[tool.hatch.build.targets.sdist]
+only-include = [
+    "src",
+    "tests",
+    "docs/ARCHITECTURE.md",
+    "docs/HARDWARE-TESTING.md",
+    "docs/SAFETY.md",
+    "docs/SPEC.md",
+    "docs/THREAT-MODEL.md",
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "pyproject.toml",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
