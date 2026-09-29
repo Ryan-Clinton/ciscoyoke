@@ -46,7 +46,21 @@ _FLASH = re.compile(
     r"(\d+)K bytes of (?:processor board System )?flash", re.IGNORECASE
 )
 
-# Boot-banner forms, available before any login.
+# Boot-banner forms, available before any login. The first three are the device
+# stating its model outright; all were seen on a real WS-C2950G-24-EI, whose
+# bootloader ends lines with LF-CR, hence the optional ``\r`` after ``^``.
+_BANNER_MODEL = (
+    # IOS, late in a normal boot: "Model number: WS-C2950G-24-EI"
+    re.compile(r"^\r?Model number\s*:\s*(\S+)", re.IGNORECASE | re.MULTILINE),
+    # Catalyst bootloader `set`: "MODEL_NUM=WS-C2950G-24-EI"
+    re.compile(r"^\r?MODEL_NUM=(\S+)", re.MULTILINE),
+    # Catalyst bootloader banner: "WS-C2950G-24 starting..."
+    re.compile(r"^\r?(WS-C\S+) starting\.\.\.", re.MULTILINE),
+)
+_BANNER_SERIAL = (
+    re.compile(r"System serial number\s*:\s*(\S+)", re.IGNORECASE),
+    re.compile(r"^\r?SYSTEM_SERIAL_NUM=(\S+)", re.MULTILINE),
+)
 _BOOTSTRAP_MODEL = re.compile(
     r"System Bootstrap, Version [^\n]*?\n?[^\n]*?(C\d{4}|WS-C\d{4}\S*)",
     re.IGNORECASE,
@@ -159,6 +173,22 @@ def from_boot_banner(text: str) -> DeviceFacts:
     platform read from an image filename is a convention, not a statement.
     """
     facts = unknown_facts("not stated in the boot output observed so far")
+
+    stated = _first(_BANNER_MODEL, text)
+    if stated:
+        serial = _first(_BANNER_SERIAL, text)
+        return DeviceFacts(
+            model=Finding(value=stated, basis=Basis.OBSERVED, confidence=Confidence.HIGH),
+            ios_version=facts.ios_version,
+            serial_number=(
+                _observed(serial, "not stated in the boot output")
+                if serial
+                else facts.serial_number
+            ),
+            config_register=facts.config_register,
+            dram_kb=facts.dram_kb,
+            flash_kb=facts.flash_kb,
+        )
 
     bootstrap = _BOOTSTRAP_MODEL.search(text)
     if bootstrap:

@@ -174,9 +174,11 @@ def _open_session(port: str, baud: int) -> tuple[Session, SerialTransport]:
 def _intake_one(port: str, baud: int) -> Intake:
     session, transport = _open_session(port, baud)
     try:
-        return intake(session)
+        result = intake(session)
     finally:
         transport.close()
+    commands.note_identity(port, result.facts, "intake")
+    return result
 
 
 def cmd_intake(args: argparse.Namespace) -> int:
@@ -471,6 +473,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "state the platform when a locked device will not identify itself; "
             "refused if it contradicts what the device reports"
+        ),
+    )
+    access_parser.add_argument(
+        "--no-restore",
+        dest="restore",
+        action="store_false",
+        help=(
+            "leave the previous configuration moved aside rather than loading "
+            "it back; follow with reset for a clean device"
         ),
     )
     access_parser.set_defaults(handler=cli_extra.cmd_recover_access_interactive)

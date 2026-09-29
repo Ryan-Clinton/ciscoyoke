@@ -69,14 +69,20 @@ Destructive — leased, journalled, dry-run by default, `--confirm` required:
 
 | | |
 | --- | --- |
-| `ciscoyoke reset PORT` | erase to a known-empty baseline |
-| `ciscoyoke recover access PORT` | platform-aware password recovery, including the guided Mode-button sequence. On a Catalyst it reads `CONFIG_FILE` and the flash listing before renaming anything, confirms the rename from a fresh listing, and saves a raw transcript of every run. `--platform router\|catalyst` states what a locked device won't disclose, and is refused if the device contradicts it |
+| `ciscoyoke reset PORT` | erase to a known-empty baseline. On a Catalyst that includes `vlan.dat`, any configuration left in flash under another name (`config.old`, `*.cfg`, a moved-aside `config.text.ciscoyoke`) and a non-default `boot config-file`. Each file is read into the archive before it is deleted, and the deletions are proven from a fresh listing before the reload |
+| `ciscoyoke recover access PORT` | platform-aware password recovery, including the guided Mode-button sequence. On a Catalyst it reads `CONFIG_FILE` and the flash listing before renaming anything, and confirms the rename from a fresh listing. `--no-restore` stops at the privileged prompt with the old configuration still aside, so `reset` can preserve and delete it instead of loading the previous owner's logins back in. The platform comes from the device, else from the model last seen booting on the same adapter, else `--platform router\|catalyst`; a stated platform the device contradicts is refused |
 | `ciscoyoke recover image PORT --image F` | XMODEM rescue for a device with no bootable image, ending in boot proof |
 | `ciscoyoke lab apply LABFILE` | push per-device configuration |
 | `ciscoyoke login PORT` | authenticate with credentials you already have |
 
-Plus `ciscoyoke console`, `ciscoyoke resolve` (reconcile an interrupted
-recovery against the device) and `ciscoyoke support-bundle`.
+Plus `ciscoyoke console`, `ciscoyoke resolve` (reconcile an interrupted or
+failed run against the device: baud changes by probing both speeds, flash
+renames and deletions by listing flash) and `ciscoyoke support-bundle`.
+
+Every destructive run saves a raw, private transcript under the state
+directory (`%LOCALAPPDATA%\ciscoyoke\transcripts` on Windows). A run that
+failed with a change sent but never observed blocks the next operation on that
+device until `resolve` has looked.
 
 **Deliberately not implemented: TFTP image delivery.** The provider, its
 constraints and the ROMMON variable generation exist, but the command does not
@@ -88,11 +94,14 @@ the working path.
 
 Nothing is claimed until it is earned — and nothing has been earned yet.
 
-**No Cisco device has ever been connected to this code.** The committed
-transcript fixtures are `synthetic:` provenance: constructed from Cisco's
-published output to pin the parsers and the state machine, never captured from
-hardware. They are useful, and they are not evidence about real behaviour. See
-[tests/fixtures/README.md](tests/fixtures/README.md).
+**One real device so far: a WS-C2950G-24-EI.** Password recovery and reset
+have run against it end to end, and it found six defects the synthetic
+fixtures could not: LF-CR line endings, a rename that failed silently over an
+existing `config.old`, and a log message hiding an IOS question among them.
+Its transcripts are not yet scrubbed and committed, so by the rule below the
+table does not claim it yet. The committed fixtures are still `synthetic:`
+provenance: constructed from Cisco's published output to pin the parsers and
+the state machine. See [tests/fixtures/README.md](tests/fixtures/README.md).
 
 ```
 ● Hardware verified      run against real hardware by a maintainer

@@ -88,6 +88,12 @@ def stated(platform: str | None) -> Platform:
     )
 
 
+def path_platform(model: str | None, platform: str | None) -> Platform:
+    """The family from the model where known, else from what was stated."""
+    observed = classify(model)
+    return observed if observed is not Platform.UNKNOWN else stated(platform)
+
+
 def path_for(
     model: str | None, state: State, *, platform: str | None = None
 ) -> RecoveryPath:

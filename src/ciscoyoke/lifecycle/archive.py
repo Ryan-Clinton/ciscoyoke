@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import re
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -189,7 +190,7 @@ class Archive:
                 continue
             path = directory / f"{artifact.name}.txt"
             body = artifact.content
-            if artifact.name.endswith("config"):
+            if artifact.name.endswith("config") or artifact.name.startswith("file_"):
                 body = _WARNING_HEADER + body
             path.write_text(body, encoding="utf-8")
             with contextlib.suppress(OSError, NotImplementedError):
@@ -299,6 +300,31 @@ def archive(session: Session, intake_result: Intake) -> Archive:
     return Archive(artifacts=tuple(artifacts), device_identity=facts.to_json())
 
 
+def file_artifact_name(filename: str) -> str:
+    """``config.old`` -> ``file_config.old``: named for what it came from."""
+    return "file_" + re.sub(r"[^A-Za-z0-9._-]", "_", filename)
+
+
+def capture_files(session: Session, filenames: tuple[str, ...]) -> tuple[Artifact, ...]:
+    """Read flash files that are about to be deleted, from a privileged prompt.
+
+    Each is read with ``more`` before anything touches it. A file that cannot be
+    read is recorded as unknown -- and therefore at risk -- rather than skipped,
+    so the reset's confirmation says exactly what would go unpreserved.
+    """
+    return tuple(
+        _capture_command(
+            session, file_artifact_name(name), f"more flash:{name}\r".encode()
+        )
+        for name in filenames
+    )
+
+
+def capture_boot_environment(session: Session) -> Artifact:
+    """``show boot``: which file IOS will load its configuration from."""
+    return _capture_command(session, "boot_environment", b"show boot\r")
+
+
 def _capture_command(session: Session, name: str, command: bytes) -> Artifact:
     before = len(session.tracker.buffer)
     session.send(command)
@@ -306,6 +332,10 @@ def _capture_command(session: Session, name: str, command: bytes) -> Artifact:
     session.drain_pager()
     output = session.tracker.buffer.text[before:]
 
+    if "%Error" in output or "% Error" in output:
+        return _unknown(
+            name, "the device reported an error reading it", "will not be preserved"
+        )
     if "% Invalid input" in output or "Incomplete command" in output:
         return Artifact(
             name=name,

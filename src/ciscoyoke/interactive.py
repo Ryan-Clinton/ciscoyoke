@@ -19,9 +19,7 @@ the tool has done anything at all.
 from __future__ import annotations
 
 import sys
-import time
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from pathlib import Path
 
 from ciscoyoke.commands import (
@@ -30,10 +28,13 @@ from ciscoyoke.commands import (
     held,
     interrupted_run,
     journal_for,
+    known_model,
+    note_identity,
+    recorded,
 )
 from ciscoyoke.credentials import Credentials, Secret, from_stdin, prompt
+from ciscoyoke.identify.facts import from_boot_banner
 from ciscoyoke.identify.probe import intake
-from ciscoyoke.journal.paths import transcripts_dir
 from ciscoyoke.journal.store import Journal
 from ciscoyoke.lifecycle import recover
 from ciscoyoke.lifecycle.archive import archive
@@ -49,7 +50,6 @@ from ciscoyoke.playbook.human import HumanActionAbandonedError, perform
 from ciscoyoke.result.exits import ExitCode
 from ciscoyoke.session import Session
 from ciscoyoke.stream.tracker import State
-from ciscoyoke.transcript.schema import write as write_transcript
 from ciscoyoke.transport.serial_ import DEFAULT_BAUD
 
 Announcer = Callable[[str], None]
@@ -107,25 +107,14 @@ def authenticate(session: Session, credentials: Credentials) -> bool:
     return session.state.state is State.PRIV_EXEC
 
 
-@contextmanager
-def recorded(session: Session, operation: str) -> Iterator[Path]:
-    """Save the session's raw transcript when the block exits, however it exits.
-
-    A recovery that fails part-way is exactly the run whose recording matters
-    most, so this writes in ``finally`` -- and yields the path up front so the
-    failure message can say where to look.
-    """
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    path = transcripts_dir() / f"{stamp}-{operation}.ytx"
-    try:
-        yield path
-    finally:
-        write_transcript(path, session.recorder.transcript())
-
-
 def _read_then_decide(
-    session: Session, journal: Journal, announce: Announcer
-) -> Playbook:
+    port: str,
+    session: Session,
+    journal: Journal,
+    announce: Announcer,
+    *,
+    restore: bool,
+) -> tuple[Playbook, ios_switch.StashDecision]:
     """Run the read-only phase, then build the rest for the file IOS loads."""
     start = len(session.tracker.buffer)
     execute(
@@ -134,11 +123,14 @@ def _read_then_decide(
         journal,
     )
     seen = session.tracker.buffer.text[start:]
+    # The bootloader states its model in `set`; seen now, it is remembered for
+    # the next locked run on this adapter.
+    note_identity(port, from_boot_banner(seen), "bootloader")
     decision = ios_switch.decide_stash(
         ios_switch.boot_environment(seen), ios_switch.flash_files(seen)
     )
     announce(f"  {decision.reason}\n")
-    return ios_switch.after_prepare(decision)
+    return ios_switch.after_prepare(decision, restore=restore), decision
 
 
 def do_recover_access_interactive(
@@ -148,6 +140,7 @@ def do_recover_access_interactive(
     confirm: bool = False,
     archive_to: Path | None = None,
     platform: str | None = None,
+    restore: bool = True,
     announce: Announcer = _announce,
 ) -> tuple[str, ExitCode]:
     """Run a full access recovery, including the physical step.
@@ -155,6 +148,11 @@ def do_recover_access_interactive(
     Archives first. On a locked device the archive is necessarily partial, and
     saying so before a recovery that may destroy what could not be read is the
     entire reason the preservation model exists.
+
+    ``restore=False`` stops at the privileged prompt with the old configuration
+    still moved aside -- for an operator who wants a clean device and would
+    otherwise load the previous owner's logins back in only to erase them.
+    ``reset`` then preserves the moved file and deletes it.
     """
     blocked = interrupted_run(port)
     if blocked:
@@ -166,21 +164,39 @@ def do_recover_access_interactive(
         recorded(session, "recover_access") as transcript,
     ):
         found = intake(session)
+        note_identity(port, found.facts, "intake")
         bundle = archive(session, found)
         if archive_to:
             bundle.write(archive_to)
 
+        # A stated platform outranks memory; memory only fills a silence, and
+        # the physical step's own evidence confirms it before anything changes.
+        model_name, recalled = found.facts.model.value, ""
+        if not model_name and not platform:
+            model_name, recalled = known_model(port, None)
         try:
-            path = recover.path_for(
-                found.facts.model.value, session.state.state, platform=platform
-            )
+            path = recover.path_for(model_name, session.state.state, platform=platform)
         except ValueError as exc:
             raise CommandError(str(exc), ExitCode.STATE_UNCERTAIN) from exc
         if path.platform is recover.Platform.UNKNOWN:
             raise CommandError(path.note, ExitCode.STATE_UNCERTAIN)
 
         preview = "\n\n".join(
-            [bundle.render(), path.render(), f"Session recorded to {transcript}"]
+            [
+                bundle.render(),
+                *([f"Platform from memory: {recalled}"] if recalled else []),
+                path.render(),
+                *(
+                    [
+                        "--no-restore: the configuration will be left aside and "
+                        "not loaded; the run stops at an unconfigured privileged "
+                        "prompt, ready for reset."
+                    ]
+                    if not restore
+                    else []
+                ),
+                f"Session recorded to {transcript}",
+            ]
         )
 
         if not confirm:
@@ -196,8 +212,11 @@ def do_recover_access_interactive(
                     perform(path.human_step, session, announce)
 
                 playbook = path.playbook
+                decision = None
                 if path.platform is recover.Platform.SWITCH:
-                    playbook = _read_then_decide(session, journal, announce)
+                    playbook, decision = _read_then_decide(
+                        port, session, journal, announce, restore=restore
+                    )
 
                 checked = plan(playbook, session.transport, session.state.state)
                 if not checked.safe:
@@ -227,6 +246,15 @@ def do_recover_access_interactive(
 
             journal.finish("completed")
 
+    if not restore and decision is not None and decision.renames:
+        return (
+            f"{preview}\n\nAccess recovered, with the previous configuration left "
+            f"aside as flash:{decision.stash} and not loaded. The device is "
+            f"unconfigured and at a privileged prompt.\n"
+            f"  Clean it:  ciscoyoke reset {port} --confirm   "
+            f"(preserves flash:{decision.stash} in the archive, then deletes it)",
+            ExitCode.SUCCESS,
+        )
     return (
         f"{preview}\n\nAccess recovery complete. Set a new password before "
         f"reloading, or the device will lock you out again.",

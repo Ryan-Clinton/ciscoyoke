@@ -13,22 +13,34 @@ would block a second terminal from doing the same harmlessly.
 from __future__ import annotations
 
 import sqlite3
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
+from ciscoyoke.identify import memory
+from ciscoyoke.identify.facts import DeviceFacts
 from ciscoyoke.identify.probe import intake
 from ciscoyoke.journal.lease import Lease, TargetBusyError
+from ciscoyoke.journal.paths import transcripts_dir
 from ciscoyoke.journal.store import Journal, connect, find_interrupted
 from ciscoyoke.lifecycle import recover
 from ciscoyoke.lifecycle import reset as reset_module
-from ciscoyoke.lifecycle.archive import archive
+from ciscoyoke.lifecycle.archive import (
+    Archive,
+    archive,
+    capture_boot_environment,
+    capture_files,
+)
 from ciscoyoke.lifecycle.health import assess
 from ciscoyoke.lifecycle.rescue import RescueReport, rescue
+from ciscoyoke.playbook import ios_switch
 from ciscoyoke.playbook.base import PlanRefusedError, StepFailedError, execute, plan
 from ciscoyoke.result.exits import ExitCode
 from ciscoyoke.session import Session
+from ciscoyoke.stream.tracker import Basis
+from ciscoyoke.transcript.schema import write as write_transcript
 from ciscoyoke.transport.identity import PortIdentity, enumerate_ports
 from ciscoyoke.transport.serial_ import (
     DEFAULT_BAUD,
@@ -168,6 +180,76 @@ def do_archive(
     )
 
 
+# -- shared by the destructive commands -------------------------------------
+
+
+@contextmanager
+def recorded(session: Session, operation: str) -> Iterator[Path]:
+    """Save the session's raw transcript when the block exits, however it exits.
+
+    A run that fails part-way is exactly the run whose recording matters most,
+    so this writes in ``finally`` -- and yields the path up front so a failure
+    message can say where to look.
+    """
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    path = transcripts_dir() / f"{stamp}-{operation}.ytx"
+    try:
+        yield path
+    finally:
+        write_transcript(path, session.recorder.transcript())
+
+
+def note_identity(port: str, facts: DeviceFacts, source: str) -> None:
+    """Remember an observed model against this adapter, for a later locked run."""
+    finding = facts.model
+    if (
+        finding.value
+        and finding.basis is Basis.OBSERVED
+        and recover.classify(finding.value) is not recover.Platform.UNKNOWN
+    ):
+        memory.remember(identity_for(port).key, finding.value, source)
+
+
+def known_model(port: str, observed: str | None) -> tuple[str | None, str]:
+    """The observed model, else the one last seen on this adapter.
+
+    Returns the model and, when it came from memory, a sentence saying so --
+    remembered identity is inferred, and the output must not hide that.
+    """
+    if observed:
+        return observed, ""
+    remembered = memory.recall(identity_for(port).key)
+    if remembered is None:
+        return None, ""
+    return remembered.model, remembered.describe()
+
+
+def _switch_cleanup(
+    session: Session, bundle: Archive
+) -> tuple[Archive, reset_module.FlashCleanup | None]:
+    """Read what a switch reset must remove, preserving each file first.
+
+    Only possible from a privileged prompt, where the flash listing was
+    captured; otherwise the plan falls back to the fixed switch reset.
+    """
+    listing = next(
+        (a for a in bundle.artifacts if a.name == "flash_listing" and a.content), None
+    )
+    if listing is None or listing.content is None:
+        return bundle, None
+
+    files = ios_switch.flash_files(listing.content)
+    stale = reset_module.stale_configs(files)
+    boot = capture_boot_environment(session)
+    preserved = capture_files(session, stale)
+    cleanup = reset_module.FlashCleanup(
+        stale=stale,
+        vlan_present=reset_module.VLAN_DATABASE in files,
+        config_file=reset_module.nondefault_config_file(boot.content or ""),
+    )
+    return replace(bundle, artifacts=(*bundle.artifacts, boot, *preserved)), cleanup
+
+
 # -- destructive commands --------------------------------------------------
 
 
@@ -190,9 +272,20 @@ def do_reset(
     if blocked:
         raise CommandError(blocked, ExitCode.INTERRUPTED_RECOVERY)
 
-    with held(port, "reset"), device_session(port, baud) as session:
+    with (
+        held(port, "reset"),
+        device_session(port, baud) as session,
+        recorded(session, "reset") as transcript,
+    ):
         found = intake(session)
+        note_identity(port, found.facts, "intake")
         bundle = archive(session, found)
+
+        model_name, recalled = known_model(port, found.facts.model.value)
+        cleanup = None
+        if recover.path_platform(model_name, platform) is recover.Platform.SWITCH:
+            bundle, cleanup = _switch_cleanup(session, bundle)
+
         if archive_to:
             bundle.write(archive_to)
 
@@ -207,7 +300,7 @@ def do_reset(
 
         try:
             book = reset_module.for_model(
-                found.facts.model.value, platform=platform
+                model_name, platform=platform, cleanup=cleanup
             )
         except reset_module.PlatformUnknownError as exc:
             # A refusal, not a crash. This is the safety path: letting it
@@ -222,7 +315,13 @@ def do_reset(
             )
 
         rendered = "\n\n".join(
-            [bundle.render(), decision.render(), checked.render()]
+            [
+                bundle.render(),
+                *([f"Platform from memory: {recalled}"] if recalled else []),
+                decision.render(),
+                checked.render(),
+                f"Session recorded to {transcript}",
+            ]
         )
         if not confirm:
             return (

@@ -266,6 +266,7 @@ def cmd_recover_access_interactive(args: argparse.Namespace) -> int:
             confirm=args.confirm,
             archive_to=Path(args.archive_to) if args.archive_to else None,
             platform=args.platform,
+            restore=args.restore,
         )
         return _emit(
             Result("recover access", int(code), {"confirmed": args.confirm}),

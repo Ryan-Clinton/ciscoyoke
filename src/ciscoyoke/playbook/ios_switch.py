@@ -335,14 +335,18 @@ PRESUMED = StashDecision(
 )
 
 
-def after_prepare(decision: StashDecision) -> Playbook:
-    """Everything after the read-only phase, for the file actually loaded."""
+def after_prepare(decision: StashDecision, *, restore: bool = True) -> Playbook:
+    """Everything after the read-only phase, for the file actually loaded.
+
+    ``restore=False`` stops at the privileged prompt with the configuration
+    still moved aside, for a clean device rather than the previous owner's.
+    """
     return Playbook(
         name="switch_access_recovery",
         description=decision.reason,
         steps=(
             *bypass_configuration(decision).steps,
-            *restore_configuration(decision).steps,
+            *(restore_configuration(decision).steps if restore else ()),
         ),
     )
 

@@ -27,7 +27,8 @@ from ciscoyoke.capture import (
     best_baud,
     capture,
 )
-from ciscoyoke.commands import CommandError
+from ciscoyoke.commands import CommandError, note_identity
+from ciscoyoke.identify.facts import from_boot_banner
 from ciscoyoke.result.exits import ExitCode
 from ciscoyoke.stream.tracker import StateTracker
 from ciscoyoke.transcript.writer import TranscriptWriter
@@ -109,6 +110,10 @@ def do_capture(
                 print("\n\nStopped.", file=sys.stderr)
     finally:
         transport.close()
+
+    # A captured boot is the one time a locked device names itself; remember
+    # it, so a later recovery on this adapter knows which physical step to ask.
+    note_identity(port, from_boot_banner(tracker.buffer.text), "capture")
 
     payload: dict[str, object] = {
         "port": port,

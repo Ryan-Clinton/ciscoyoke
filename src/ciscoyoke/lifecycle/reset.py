@@ -14,11 +14,16 @@ device believing it clean.
 
 Erasing a VLAN database matters more than it looks on a switch: `write erase`
 alone leaves `vlan.dat` in flash, so a switch that appears reset comes back with
-the previous owner's VLANs and quietly breaks the next lab.
+the previous owner's VLANs and quietly breaks the next lab. The same goes for
+configurations left in flash under other names -- a real 2950 arrived with a
+`config.old` nobody had mentioned -- so those are read into the archive and
+deleted too, and every deletion is proven from a fresh listing.
 """
 
 from __future__ import annotations
 
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from ciscoyoke.journal import model
@@ -29,6 +34,7 @@ from ciscoyoke.playbook.base import (
     Step,
     send_line,
 )
+from ciscoyoke.playbook.ios_switch import flash_files
 from ciscoyoke.stream.tracker import State
 
 #: The named guard that authorises destroying a configuration.
@@ -214,54 +220,183 @@ def router_reset() -> Playbook:
     )
 
 
-def switch_reset() -> Playbook:
-    """Erase a switch's startup configuration *and* its VLAN database.
+VLAN_DATABASE = "vlan.dat"
+
+# Files `write erase` itself removes on a Catalyst: NVRAM is flash here.
+_NVRAM_FILES = frozenset({"config.text", "private-config.text"})
+
+# A previous owner's configuration left in flash under another name. Seen on a
+# real 2950: `config.old` from whoever set it up, which `write erase` leaves
+# alone and a reset that claims "clean" must not.
+_STALE_CONFIG = re.compile(
+    r"(?:private-)?config\..+|.+\.(?:cfg|conf|bak|old|ciscoyoke)",
+    re.IGNORECASE,
+)
+
+_CONFIG_FILE_LINE = re.compile(r"^\s*Config file\s*:\s*(\S+)", re.IGNORECASE | re.MULTILINE)
+
+
+def stale_configs(files: frozenset[str]) -> tuple[str, ...]:
+    """Configuration files in flash that `write erase` would leave behind."""
+    return tuple(
+        sorted(
+            name
+            for name in files
+            if _STALE_CONFIG.fullmatch(name) and name not in _NVRAM_FILES
+        )
+    )
+
+
+def nondefault_config_file(show_boot: str) -> str | None:
+    """The ``boot config-file`` from ``show boot``, if it is not the default."""
+    match = _CONFIG_FILE_LINE.search(show_boot)
+    if not match:
+        return None
+    value = match.group(1)
+    if value.split(":", 1)[-1].lstrip("/") == "config.text":
+        return None
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class FlashCleanup:
+    """What a switch reset removes beyond the startup configuration.
+
+    Read from the device before the plan is built -- the flash listing and
+    ``show boot`` -- so the plan names every file it will delete.
+    """
+
+    stale: tuple[str, ...] = ()
+    vlan_present: bool = True
+    config_file: str | None = None
+
+    @property
+    def deleted(self) -> tuple[str, ...]:
+        return ((VLAN_DATABASE,) if self.vlan_present else ()) + self.stale
+
+
+def _delete_steps(
+    name: str, what: str, *, tag: str | None = None, step: str | None = None
+) -> tuple[Step, ...]:
+    """`delete flash:<name>`: a three-part exchange, not one line.
+
+    IOS asks "Delete filename [<name>]?", then "Delete flash:<name>? [confirm]".
+    Blasting three carriage returns at it happened to work only if every prompt
+    appeared in the order and timing assumed, and left no way to notice when it
+    did not.
+    """
+    return (
+        Step(
+            name=step or f"delete_{name}",
+            description=f"delete flash:{name} ({what})",
+            require_state=(State.PRIV_EXEC,),
+            expect=(State.FILENAME_PROMPT, State.CONFIRM),
+            action=send_line(f"delete flash:{name}\r".encode()),
+            effect=Effect.DESTRUCTIVE,
+            mutation=model.delete_flash_file(f"flash:{name}", guard=ACCEPT_CONFIG_LOSS),
+            timeout=30.0,
+        ),
+        Step(
+            name=f"accept_{tag or name}_filename",
+            description="accept the default filename",
+            require_state=(State.FILENAME_PROMPT, State.CONFIRM),
+            expect=(State.CONFIRM, State.PRIV_EXEC),
+            action=send_line(b"\r"),
+            timeout=30.0,
+        ),
+        Step(
+            name=f"confirm_{tag or name}_delete",
+            description="answer [confirm]",
+            require_state=(State.CONFIRM, State.PRIV_EXEC),
+            expect=(State.PRIV_EXEC,),
+            action=send_line(b"\r"),
+            timeout=30.0,
+        ),
+    )
+
+
+def _clear_config_file_steps(current: str) -> tuple[Step, ...]:
+    return (
+        Step(
+            name="enter_config_mode",
+            description="configure terminal",
+            require_state=(State.PRIV_EXEC,),
+            expect=(State.CONFIG_MODE,),
+            action=send_line(b"configure terminal\r"),
+            timeout=30.0,
+        ),
+        Step(
+            name="clear_boot_config_file",
+            description=f"no boot config-file (was {current})",
+            require_state=(State.CONFIG_MODE,),
+            expect=(State.CONFIG_MODE,),
+            action=send_line(b"no boot config-file\r"),
+            effect=Effect.DESTRUCTIVE,
+            mutation=model.boot_config_file(current),
+            timeout=30.0,
+        ),
+        Step(
+            name="leave_config_mode",
+            description="end",
+            require_state=(State.CONFIG_MODE,),
+            expect=(State.PRIV_EXEC,),
+            action=send_line(b"end\r"),
+            timeout=30.0,
+        ),
+    )
+
+
+def _all_gone(names: tuple[str, ...]) -> Callable[[str], str | None]:
+    def check(output: str) -> str | None:
+        remaining = sorted(set(names) & flash_files(output))
+        if remaining:
+            return f"still in flash after deletion: {', '.join(remaining)}"
+        return None
+
+    return check
+
+
+def switch_reset(cleanup: FlashCleanup | None = None) -> Playbook:
+    """Erase a switch's startup configuration, VLAN database and stale configs.
 
     The `vlan.dat` deletion is the step people forget. Without it a switch that
     looks reset comes back carrying the previous owner's VLANs, and the next lab
-    fails for reasons that have nothing to do with the lab.
+    fails for reasons that have nothing to do with the lab. Stale configuration
+    files are the second thing: invisible until someone renames one back.
+
+    Every deletion is then proven from a fresh listing before the reload, rather
+    than inferred from having reached the prompt again.
     """
+    plan = cleanup if cleanup is not None else FlashCleanup()
+    steps: list[Step] = [*_erase_steps()]
+    if plan.config_file:
+        steps += _clear_config_file_steps(plan.config_file)
+    if plan.vlan_present:
+        steps += _delete_steps(
+            VLAN_DATABASE,
+            "destroys the VLAN database",
+            tag="vlan",
+            step="delete_vlan_database",
+        )
+    for name in plan.stale:
+        steps += _delete_steps(name, "a previous owner's configuration")
+    if plan.deleted:
+        steps.append(
+            Step(
+                name="confirm_flash_clean",
+                description="dir flash: (confirm every deletion)",
+                require_state=(State.PRIV_EXEC,),
+                expect=(State.PRIV_EXEC,),
+                action=send_line(b"dir flash:\r"),
+                verify=_all_gone(plan.deleted),
+                timeout=30.0,
+            )
+        )
+    steps += _reload_steps()
     return Playbook(
         name="reset_switch",
-        description="Erase startup-config and vlan.dat, then reload",
-        steps=(
-            *_erase_steps(),
-            # `delete flash:vlan.dat` is a three-part exchange, not one line:
-            # IOS echoes "Delete filename [vlan.dat]?", then
-            # "Delete flash:vlan.dat? [confirm]". Blasting three carriage
-            # returns at it happened to work only if every prompt appeared in
-            # the order and timing assumed, and left no way to notice when it
-            # did not.
-            Step(
-                name="delete_vlan_database",
-                description="delete flash:vlan.dat (destroys the VLAN database)",
-                require_state=(State.PRIV_EXEC,),
-                expect=(State.FILENAME_PROMPT, State.CONFIRM),
-                action=send_line(b"delete flash:vlan.dat\r"),
-                effect=Effect.DESTRUCTIVE,
-                mutation=model.delete_flash_file(
-                    "flash:vlan.dat", guard=ACCEPT_CONFIG_LOSS
-                ),
-                timeout=30.0,
-            ),
-            Step(
-                name="accept_vlan_filename",
-                description="accept the default filename",
-                require_state=(State.FILENAME_PROMPT, State.CONFIRM),
-                expect=(State.CONFIRM, State.PRIV_EXEC),
-                action=send_line(b"\r"),
-                timeout=30.0,
-            ),
-            Step(
-                name="confirm_vlan_delete",
-                description="answer [confirm]",
-                require_state=(State.CONFIRM, State.PRIV_EXEC),
-                expect=(State.PRIV_EXEC,),
-                action=send_line(b"\r"),
-                timeout=30.0,
-            ),
-            *_reload_steps(),
-        ),
+        description="Erase startup-config, vlan.dat and stale configs, then reload",
+        steps=tuple(steps),
     )
 
 
@@ -269,7 +404,12 @@ class PlatformUnknownError(RuntimeError):
     """The platform could not be identified, so no reset will be guessed at."""
 
 
-def for_model(model_name: str | None, *, platform: str | None = None) -> Playbook:
+def for_model(
+    model_name: str | None,
+    *,
+    platform: str | None = None,
+    cleanup: FlashCleanup | None = None,
+) -> Playbook:
     """Pick the right reset, or refuse.
 
     An earlier version defaulted to the switch playbook on an unknown model,
@@ -290,7 +430,7 @@ def for_model(model_name: str | None, *, platform: str | None = None) -> Playboo
         if chosen in ("router", "ios", "rommon"):
             return router_reset()
         if chosen in ("switch", "catalyst"):
-            return switch_reset()
+            return switch_reset(cleanup)
         raise PlatformUnknownError(
             f"unknown platform {platform!r}; expected 'router' or 'catalyst'"
         )
@@ -307,7 +447,7 @@ def for_model(model_name: str | None, *, platform: str | None = None) -> Playboo
     if upper.startswith(("CISCO1", "CISCO2", "CISCO3", "C1700", "C2600", "C2800")):
         return router_reset()
     if upper.startswith(("WS-C", "CAT")):
-        return switch_reset()
+        return switch_reset(cleanup)
 
     raise PlatformUnknownError(
         f"{model_name} is not a platform with a verified reset procedure. "

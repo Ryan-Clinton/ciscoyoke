@@ -236,6 +236,20 @@ def rename_flash_file(source: str, destination: str) -> Mutation:
     )
 
 
+def boot_config_file(before: str) -> Mutation:
+    """Clear a non-default ``boot config-file``, so IOS reads ``config.text``.
+
+    Compensatable: setting it back restores the prior boot behaviour exactly.
+    """
+    return Mutation(
+        kind="boot_config_file",
+        reversibility=Reversibility.COMPENSATABLE,
+        before={"config_file": before},
+        after={"config_file": "default"},
+        compensation={"action": "boot config-file", "value": before},
+    )
+
+
 def write_erase(guard: str) -> Mutation:
     """Destroy the startup configuration. Nothing brings it back."""
     return Mutation(

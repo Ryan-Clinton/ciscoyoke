@@ -173,6 +173,42 @@ _UNANCHORED: tuple[tuple[SignalKind, re.Pattern[str], str], ...] = (
 )
 
 
+# A console syslog message: optional timestamp, then %FACILITY-SEVERITY-MNEMONIC:
+#   *Mar  1 00:12:18.759: %IP_SNMP-3-SOCKET: can't open UDP socket
+#   00:00:12: %ENVIRONMENT-2-FAN_FAULT: System Fault: FAN FAULT is detected.
+#   18: %LINEPROTO-5-UPDOWN: ...      <- the tail of a timestamp IOS split
+# Newlines around it are consumed too, because the damage it does is positional:
+# it lands *after* a prompt, so the prompt is no longer at the end of the stream.
+_SYSLOG = re.compile(
+    r"[\r\n]*"
+    r"(?:\*?[A-Z][a-z]{2}\s+\d+\s+)?"
+    r"(?:\d+:)*\d+(?:\.\d+)?:\s*"
+    r"%[A-Z0-9_]+-\d-[A-Z0-9_]+:[^\r\n]*"
+    r"[\r\n]*"
+    r"|[\r\n]*%[A-Z0-9_]+-\d-[A-Z0-9_]+:[^\r\n]*[\r\n]*"
+)
+
+
+def strip_syslog(tail: str) -> str:
+    """Remove console log messages so they cannot hide a prompt.
+
+    Without ``logging synchronous`` -- and a second-hand switch rarely has it --
+    IOS prints log messages over whatever is on the console. A real 2950 did
+    this to ``Destination filename [config.text]?``: a link-state message
+    arrived after the question, the question stopped being the last thing in
+    the stream, and the step waited on a prompt it could no longer see.
+
+    A message in the middle of the stream becomes a single newline, preserving
+    line structure for the line-anchored prompts that follow it. One at the end
+    is removed entirely, leaving whatever prompt preceded it at the end again.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        return "" if match.end() == len(tail) else "\n"
+
+    return _SYSLOG.sub(replace, tail)
+
+
 def detect(tail: str) -> tuple[Signal, ...]:
     """Return every signal present in ``tail``.
 

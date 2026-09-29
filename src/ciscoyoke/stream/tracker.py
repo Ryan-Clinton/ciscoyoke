@@ -19,7 +19,13 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from ciscoyoke.stream.buffer import TAIL_WINDOW, StreamBuffer
-from ciscoyoke.stream.signals import Signal, SignalKind, detect, first_anchored
+from ciscoyoke.stream.signals import (
+    Signal,
+    SignalKind,
+    detect,
+    first_anchored,
+    strip_syslog,
+)
 
 
 class State(StrEnum):
@@ -192,7 +198,7 @@ class StateTracker:
         return tuple(emitted)
 
     def _evaluate(self) -> Observation:
-        tail = self._buffer.tail(TAIL_WINDOW)
+        tail = strip_syslog(self._buffer.tail(TAIL_WINDOW))
         signals = detect(tail)
         return self._resolve(signals)
 

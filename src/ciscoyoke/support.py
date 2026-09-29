@@ -18,10 +18,14 @@ from pathlib import Path
 
 from ciscoyoke import __version__, doctor
 from ciscoyoke.commands import CommandError, device_session, identity_for
+from ciscoyoke.identify.probe import intake
 from ciscoyoke.journal.converge import Resolution, reconcile, roll_back
 from ciscoyoke.journal.model import Mutation
 from ciscoyoke.journal.store import connect, find_interrupted
+from ciscoyoke.playbook import ios_switch
 from ciscoyoke.result.exits import ExitCode
+from ciscoyoke.session import Session
+from ciscoyoke.stream.tracker import State
 from ciscoyoke.transport import labels
 from ciscoyoke.transport.identity import enumerate_ports
 from ciscoyoke.transport.serial_ import CANDIDATE_BAUDS
@@ -140,6 +144,67 @@ def _probe_baud(port: str, mutation: Mutation) -> tuple[Resolution, str]:
     )
 
 
+_FLASH_KINDS = ("rename_flash_file", "delete_flash_file")
+
+
+def _base(name: object) -> str:
+    return str(name).split(":", 1)[-1].lstrip("/")
+
+
+def _flash_listing(session: Session) -> frozenset[str] | None:
+    """List flash from wherever the device is, or ``None`` if it cannot be read.
+
+    Both a privileged IOS prompt and the Catalyst bootloader answer
+    ``dir flash:`` with the same layout; nothing else can be asked.
+    """
+    if session.state.state not in (State.PRIV_EXEC, State.BOOTLOADER):
+        return None
+    before = len(session.tracker.buffer)
+    if session.state.state is State.PRIV_EXEC:
+        session.send(b"terminal length 0\r")
+        session.settle()
+        before = len(session.tracker.buffer)
+    session.send(b"dir flash:\r")
+    session.settle(timeout=20.0)
+    session.drain_pager()
+    listing = session.tracker.buffer.text[before:]
+    return ios_switch.flash_files(listing) if "Directory of" in listing else None
+
+
+def _probe_flash(port: str, mutation: Mutation) -> tuple[Resolution, str]:
+    """Settle a rename or delete by listing flash. Names only, never contents."""
+    try:
+        with device_session(port) as session:
+            intake(session, interrogate=False)
+            files = _flash_listing(session)
+    except CommandError as exc:
+        return Resolution.INDETERMINATE, str(exc)
+    if files is None:
+        return (
+            Resolution.INDETERMINATE,
+            "flash can only be listed from a privileged prompt or the bootloader",
+        )
+
+    if mutation.kind == "delete_flash_file":
+        name = _base(mutation.before.get("name"))
+        if name in files:
+            return Resolution.NOT_APPLIED, f"{name} is still in flash"
+        return Resolution.APPLIED, f"{name} is not in flash"
+
+    source = _base(mutation.before.get("name"))
+    destination = _base(mutation.after.get("name"))
+    if destination in files and source not in files:
+        return Resolution.APPLIED, f"{destination} present, {source} absent"
+    if source in files and destination not in files:
+        return Resolution.NOT_APPLIED, f"{source} present, {destination} absent"
+    return (
+        Resolution.INDETERMINATE,
+        f"{source} {'present' if source in files else 'absent'}, "
+        f"{destination} {'present' if destination in files else 'absent'}: "
+        f"neither the before nor the after state",
+    )
+
+
 def do_resolve(
     port: str, *, rollback: bool = False
 ) -> ResolveOutcome:
@@ -162,6 +227,8 @@ def do_resolve(
         def probe(mutation: Mutation) -> tuple[Resolution, str]:
             if mutation.kind == "console_baud":
                 return _probe_baud(port, mutation)
+            if mutation.kind in _FLASH_KINDS:
+                return _probe_flash(port, mutation)
             return (
                 Resolution.INDETERMINATE,
                 f"no automatic check exists for {mutation.kind}",
@@ -193,8 +260,32 @@ def do_resolve(
         connection.close()
 
 
+def _compensate_rename(port: str, mutation: Mutation) -> bool:
+    """Rename a file back, then confirm it from a fresh listing."""
+    source = _base(mutation.before.get("name"))
+    destination = _base(mutation.after.get("name"))
+    try:
+        with device_session(port) as session:
+            intake(session, interrogate=False)
+            state = session.state.state
+            if state not in (State.PRIV_EXEC, State.BOOTLOADER):
+                return False
+            # IOS asks "Destination filename [..]?"; the bootloader does not.
+            answer = b"\r" if state is State.PRIV_EXEC else b""
+            session.send(
+                f"rename flash:{destination} flash:{source}\r".encode() + answer
+            )
+            session.settle(timeout=20.0)
+            files = _flash_listing(session)
+    except CommandError:
+        return False
+    return files is not None and source in files and destination not in files
+
+
 def _compensate(port: str, mutation: Mutation) -> bool:
     """Apply one compensation, confirming it took effect."""
+    if mutation.kind == "rename_flash_file" and mutation.compensation is not None:
+        return _compensate_rename(port, mutation)
     if mutation.kind != "console_baud" or mutation.compensation is None:
         return False
     target = mutation.compensation.get("baud")

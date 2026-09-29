@@ -212,24 +212,38 @@ class Journal:
         return bool(row and row["finished_at"] is not None)
 
 
+#: Outcomes that mean a person or `resolve` has already settled the run.
+_SETTLED_OUTCOMES = frozenset({"completed", "resolved", "rolled_back"})
+
+
 def find_interrupted(
     connection: sqlite3.Connection, target_key: str
 ) -> Journal | None:
-    """The most recent unfinished run against this device, if any.
+    """The most recent run against this device, if it left anything unsettled.
 
-    An unfinished run is the signal that a previous invocation did not complete.
+    Two cases. A run that never finished -- the process died -- is the obvious
+    one. The other is a run that *finished* by failing, with a mutation still
+    ``ATTEMPTED``: sent, never observed. A real 2950 recovery ended exactly so,
+    marked finished and so invisible to the next command, with the device in a
+    state the journal could not describe. Only the latest run counts: a later
+    run has already been operating on whatever the device became.
+
     What it means for the device is not knowable from here -- that requires
     probing, which is :mod:`ciscoyoke.journal.converge`'s job.
     """
     row = connection.execute(
-        "SELECT run_id FROM runs WHERE target_key = ? AND finished_at IS NULL "
-        "ORDER BY started_at DESC LIMIT 1",
+        "SELECT run_id, finished_at, outcome FROM runs WHERE target_key = ? "
+        "ORDER BY started_at DESC, rowid DESC LIMIT 1",
         (target_key,),
     ).fetchone()
     if row is None:
         return None
 
     journal = Journal(connection, str(row["run_id"]), target_key)
+    if row["finished_at"] is not None and (
+        row["outcome"] in _SETTLED_OUTCOMES or not journal.unresolved()
+    ):
+        return None
     count = connection.execute(
         "SELECT COALESCE(MAX(sequence), 0) AS n FROM mutations WHERE run_id = ?",
         (journal.run_id,),
