@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 """Command-line interface.
 
 Every command supports ``--json`` and returns a documented exit code, so this
@@ -556,8 +557,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _enable_completion(parser: argparse.ArgumentParser) -> None:
+    """Wire up argcomplete tab completion when the optional extra is installed."""
+    try:
+        import argcomplete
+    except ImportError:
+        return
+    argcomplete.autocomplete(parser)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
+    if argv is None:
+        _enable_completion(parser)
     args = parser.parse_args(argv)
     handler = args.handler
     return int(handler(args))

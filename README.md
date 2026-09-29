@@ -218,6 +218,32 @@ python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 .venv/bin/pytest
 ```
 
+### Shell completion
+
+Tab completion for all subcommands and flags uses [`argcomplete`](https://kislyuk.github.io/argcomplete/) via the optional `completion` extra:
+
+```bash
+pipx install "ciscoyoke[completion]"
+# or from a clone:
+.venv/bin/pip install -e ".[completion]"
+```
+
+Enable it in your shell profile:
+
+- **bash** (`~/.bashrc`):
+  ```bash
+  eval "$(register-python-argcomplete ciscoyoke)"
+  ```
+- **zsh** (`~/.zshrc`):
+  ```zsh
+  autoload -U bashcompinit && bashcompinit
+  eval "$(register-python-argcomplete ciscoyoke)"
+  ```
+- **PowerShell** (`$PROFILE`):
+  ```powershell
+  register-python-argcomplete --shell powershell ciscoyoke | Out-String | Invoke-Expression
+  ```
+
 ## Documentation
 
 - [Specification](docs/SPEC.md) — the design, its commitments, and what was
