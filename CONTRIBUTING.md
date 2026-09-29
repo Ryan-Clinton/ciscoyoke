@@ -29,6 +29,11 @@ Issues labelled [good first issue](https://github.com/Ryan-Clinton/ciscoyoke/lab
 and [help wanted](https://github.com/Ryan-Clinton/ciscoyoke/labels/help%20wanted)
 are the places to start.
 
+**Issues aren't assigned.** There's no need to ask to work on one: open a pull
+request (a draft is fine, early is welcome) and it'll be reviewed. If two land
+for the same issue, the first one that's ready gets merged. Hardware issues are
+open to anyone who owns the device.
+
 ## Two rules that aren't negotiable
 
 - **Never commit a raw recording** (`.ytx`), and never commit one that read
