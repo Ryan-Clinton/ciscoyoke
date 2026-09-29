@@ -139,7 +139,14 @@ def cmd_transcript_scrub(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return int(ExitCode.DEVICE_NOT_FOUND)
 
-    outcome = scrub_module.scrub(transcript, source=source.name)
+    provenance = args.source or source.name
+    if not provenance.startswith(("hardware:", "synthetic:")):
+        print(
+            "note: --source should begin 'hardware:' or 'synthetic:'; the README "
+            "support matrix derives its marks from that prefix",
+            file=sys.stderr,
+        )
+    outcome = scrub_module.scrub(transcript, source=provenance)
     destination = (
         Path(args.output)
         if args.output
@@ -498,6 +505,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scrub_parser.add_argument("path", help="raw .ytx transcript")
     scrub_parser.add_argument("-o", "--output", help="destination (default: <path>.pub)")
+    scrub_parser.add_argument(
+        "--source",
+        help=(
+            "provenance, e.g. 'hardware: WS-C2950G-24-EI, recover access'; "
+            "defaults to the input filename"
+        ),
+    )
     scrub_parser.set_defaults(handler=cmd_transcript_scrub)
 
     cli_extra.register(sub)

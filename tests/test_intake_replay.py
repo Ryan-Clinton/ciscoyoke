@@ -6,8 +6,8 @@ against committed transcripts, on a machine with nothing plugged in.
 Every fixture here is ``synthetic:`` provenance: constructed from Cisco's
 published output, never captured from hardware. They pin the parser and the
 state machine against the documented output shape, which is worth having, but
-they do not and cannot demonstrate the tool works on a real device. That is why
-the support matrix is still empty. See tests/fixtures/README.md.
+they do not and cannot demonstrate the tool works on a real device. The
+hardware replays live in test_hardware_fixtures.py. See tests/fixtures/README.md.
 """
 
 from __future__ import annotations

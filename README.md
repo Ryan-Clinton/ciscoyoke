@@ -98,10 +98,11 @@ Nothing is claimed until it is earned — and nothing has been earned yet.
 have run against it end to end, and it found six defects the synthetic
 fixtures could not: LF-CR line endings, a rename that failed silently over an
 existing `config.old`, and a log message hiding an IOS question among them.
-Its transcripts are not yet scrubbed and committed, so by the rule below the
-table does not claim it yet. The committed fixtures are still `synthetic:`
-provenance: constructed from Cisco's published output to pin the parsers and
-the state machine. See [tests/fixtures/README.md](tests/fixtures/README.md).
+Three of its sessions are committed as scrubbed `hardware:` fixtures (`hw-*`),
+replayed by `tests/test_hardware_fixtures.py`. Everything else in
+`tests/fixtures` is `synthetic:` provenance: constructed from Cisco's published
+output to pin the parsers and the state machine. See
+[tests/fixtures/README.md](tests/fixtures/README.md).
 
 ```
 ● Hardware verified      run against real hardware by a maintainer
@@ -113,11 +114,16 @@ the state machine. See [tests/fixtures/README.md](tests/fixtures/README.md).
 | Platform | Intake | Access recovery | Image rescue | Reset |
 | --- | --- | --- | --- | --- |
 | Cisco 1760 | — | — | — | — |
-| Catalyst 2950 | — | — | — | — |
+| Catalyst 2950 | ● [cold boot](tests/fixtures/hw-switch-2950-cold-boot-locked.ytx.pub) | ● [no-restore](tests/fixtures/hw-switch-2950-recover-no-restore.ytx.pub) | — | — ¹ |
 | Catalyst 3550 | — | — | — | — |
 | Catalyst 2960 | — | — | — | — |
 
-Every ● and ◐ will link to the transcript fixture that earned it.
+Every ● and ◐ links to the transcript fixture that earned it.
+
+¹ Reset has run end to end on the 2950, but its recording is not committed: it
+had to read the previous owner's configuration into the archive before deleting
+it, and that configuration is not ours to publish. The mark waits for a reset
+recorded against a lab-only configuration.
 
 ## The interesting parts
 

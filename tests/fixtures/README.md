@@ -20,17 +20,28 @@ machine against the output shape Cisco documents, and it fails loudly if a
 refactor changes behaviour. What it cannot do is prove the tool works on real
 hardware, because no hardware was involved. It therefore never earns a ● or a ◐.
 
-**Current status: every fixture in this directory is `synthetic:`.** No Cisco
-device has been connected to this code. The support matrix is entirely `—`
-for exactly that reason, and the first `●` will appear when a real 1760 or 2950
-transcript is captured and committed.
+**Current status:** the `hw-*` files are `hardware:`, captured from a
+WS-C2950G-24-EI and replayed by `tests/test_hardware_fixtures.py`. Everything
+else is `synthetic:`.
 
 ## Adding a real capture
 
+Destructive commands record every run to the state directory
+(`%LOCALAPPDATA%\ciscoyoke\transcripts` on Windows); `capture` and `console
+--record` write wherever you point them.
+
 ```
-ciscoyoke console COM3 --record session.ytx     # raw, private, gitignored
-ciscoyoke transcript scrub session.ytx          # produces session.ytx.pub
+ciscoyoke transcript scrub RAW.ytx -o tests/fixtures/hw-NAME.ytx.pub \
+    --source "hardware: MODEL, what the run did, DATE"
 ```
 
-Then read the scrubbed file before committing it. The scrub report says what it
-redacted; it cannot say what it missed.
+Then **read the scrubbed file before committing it.** The scrub report says what
+it redacted; it cannot say what it missed. The first real captures proved the
+point: the scrubber missed a RADIUS key written with `auth-port`/`acct-port`
+options and a banner naming the previous owner and their street address, both
+since fixed. No scrubber can know that a config's prose identifies somebody.
+
+**Never commit a run that read a previous owner's configuration** --
+`reset` archiving a stale file, `archive`, a `show running-config` -- however
+well it scrubs. Record the same operation against a lab-only configuration
+instead.
