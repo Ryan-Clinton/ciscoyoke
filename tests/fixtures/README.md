@@ -24,6 +24,14 @@ hardware, because no hardware was involved. It therefore never earns a ● or a 
 WS-C2950G-24-EI and replayed by `tests/test_hardware_fixtures.py`. Everything
 else is `synthetic:`.
 
+## From a user's report
+
+A `ciscoyoke report` zip already holds a scrubbed `transcript.ytx.pub` with
+configuration output removed. Run `ciscoyoke transcript replay` on it to see
+where the tracker lost the thread, commit it here as `hw-<model>-<what>.ytx.pub`
+with a `hardware:` source naming the reporter's model, write the test that
+replays it and fails, then fix the code until it passes.
+
 ## Adding a real capture
 
 Destructive commands record every run to the state directory

@@ -13,7 +13,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from ciscoyoke import capturing, imaging, interactive, labs, support
+from ciscoyoke import capturing, imaging, interactive, labs, report, support
 from ciscoyoke.commands import CommandError
 from ciscoyoke.playbook.transfer import Progress
 from ciscoyoke.result.exits import ExitCode
@@ -244,6 +244,36 @@ def cmd_support_bundle(args: argparse.Namespace) -> int:
     return _guard(run, args, "support-bundle")
 
 
+def cmd_report(args: argparse.Namespace) -> int:
+    """Package a run for a remote fix: scrubbed, configuration output removed."""
+
+    def run() -> int:
+        try:
+            outcome = report.do_report(
+                Path(args.run) if args.run else None,
+                Path(args.output) if args.output else None,
+            )
+        except FileNotFoundError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return int(ExitCode.DEVICE_NOT_FOUND)
+        return _emit(
+            Result(
+                "report",
+                int(ExitCode.SUCCESS),
+                {
+                    "report": str(outcome.path),
+                    "run": str(outcome.run),
+                    "config_blocks_removed": outcome.elided,
+                    "had_failure": outcome.had_failure,
+                },
+            ),
+            args.json,
+            outcome.render(),
+        )
+
+    return _guard(run, args, "report")
+
+
 def cmd_resolve(args: argparse.Namespace) -> int:
     def run() -> int:
         outcome = support.do_resolve(target(args.port), rollback=args.rollback)
@@ -267,6 +297,7 @@ def cmd_recover_access_interactive(args: argparse.Namespace) -> int:
             archive_to=Path(args.archive_to) if args.archive_to else None,
             platform=args.platform,
             restore=args.restore,
+            accept_unverified=args.accept_unverified,
         )
         return _emit(
             Result("recover access", int(code), {"confirmed": args.confirm}),
@@ -339,6 +370,18 @@ def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     bundle.add_argument("-o", "--output", default="ciscoyoke-support")
     bundle.add_argument("--port", help="include any unfinished journal for this port")
     bundle.set_defaults(handler=cmd_support_bundle)
+
+    report_parser = sub.add_parser(
+        "report",
+        help="package a run into one shareable zip so it can be fixed remotely",
+    )
+    report_parser.add_argument(
+        "--run", help="raw transcript to report (default: the most recent run)"
+    )
+    report_parser.add_argument(
+        "-o", "--output", help="directory for the zip (default: current directory)"
+    )
+    report_parser.set_defaults(handler=cmd_report)
 
     resolve = sub.add_parser(
         "resolve", help="reconcile an interrupted recovery against the device"

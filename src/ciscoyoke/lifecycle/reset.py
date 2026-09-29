@@ -28,13 +28,14 @@ from dataclasses import dataclass
 
 from ciscoyoke.journal import model
 from ciscoyoke.lifecycle.archive import Archive, PreservationStatus
+from ciscoyoke.platform_profiles import CATALYST_2950, CatalystProfile, catalyst_profile
 from ciscoyoke.playbook.base import (
     Effect,
     Playbook,
     Step,
     send_line,
 )
-from ciscoyoke.playbook.ios_switch import flash_files
+from ciscoyoke.playbook.ios_switch import after_boot_steps, flash_files
 from ciscoyoke.stream.tracker import State
 
 #: The named guard that authorises destroying a configuration.
@@ -155,7 +156,7 @@ def _erase_steps() -> tuple[Step, ...]:
     )
 
 
-def _reload_steps() -> tuple[Step, ...]:
+def _reload_steps(boot_timeout: float = 300.0) -> tuple[Step, ...]:
     """`reload`, its save question, and its confirmation.
 
     Two prompts, in order: "System configuration has been modified. Save?
@@ -196,18 +197,18 @@ def _reload_steps() -> tuple[Step, ...]:
             name="confirm_reload",
             description="answer [confirm] and wait for the device to come back",
             require_state=(State.CONFIRM, State.BOOTING),
-            expect=(State.SETUP_DIALOG, State.PRESS_RETURN, State.USER_EXEC),
+            expect=(
+                State.SETUP_DIALOG,
+                State.AUTOINSTALL,
+                State.PRESS_RETURN,
+                State.USER_EXEC,
+            ),
             action=send_line(b"\r"),
-            timeout=300.0,
+            timeout=boot_timeout,
         ),
-        Step(
-            name="decline_setup_dialog",
-            description="decline the initial configuration dialog",
-            require_state=(State.SETUP_DIALOG, State.PRESS_RETURN, State.USER_EXEC),
-            expect=(State.PRESS_RETURN, State.USER_EXEC),
-            action=send_line(b"no\r"),
-            timeout=60.0,
-        ),
+        # The setup dialog, then on IOS 15 the autoinstall question; each only
+        # if it is actually asked.
+        *after_boot_steps(),
     )
 
 
@@ -356,7 +357,9 @@ def _all_gone(names: tuple[str, ...]) -> Callable[[str], str | None]:
     return check
 
 
-def switch_reset(cleanup: FlashCleanup | None = None) -> Playbook:
+def switch_reset(
+    cleanup: FlashCleanup | None = None, profile: CatalystProfile = CATALYST_2950
+) -> Playbook:
     """Erase a switch's startup configuration, VLAN database and stale configs.
 
     The `vlan.dat` deletion is the step people forget. Without it a switch that
@@ -392,7 +395,7 @@ def switch_reset(cleanup: FlashCleanup | None = None) -> Playbook:
                 timeout=30.0,
             )
         )
-    steps += _reload_steps()
+    steps += _reload_steps(profile.boot_timeout)
     return Playbook(
         name="reset_switch",
         description="Erase startup-config, vlan.dat and stale configs, then reload",
@@ -430,7 +433,7 @@ def for_model(
         if chosen in ("router", "ios", "rommon"):
             return router_reset()
         if chosen in ("switch", "catalyst"):
-            return switch_reset(cleanup)
+            return switch_reset(cleanup, catalyst_profile(model_name))
         raise PlatformUnknownError(
             f"unknown platform {platform!r}; expected 'router' or 'catalyst'"
         )
@@ -447,7 +450,7 @@ def for_model(
     if upper.startswith(("CISCO1", "CISCO2", "CISCO3", "C1700", "C2600", "C2800")):
         return router_reset()
     if upper.startswith(("WS-C", "CAT")):
-        return switch_reset(cleanup)
+        return switch_reset(cleanup, catalyst_profile(model_name))
 
     raise PlatformUnknownError(
         f"{model_name} is not a platform with a verified reset procedure. "

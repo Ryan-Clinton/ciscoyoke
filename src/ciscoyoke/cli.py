@@ -22,6 +22,7 @@ from ciscoyoke.identify.probe import Intake, intake
 from ciscoyoke.result.exits import ExitCode
 from ciscoyoke.result.schema import Result
 from ciscoyoke.session import Session
+from ciscoyoke.transcript import replay as replay_module
 from ciscoyoke.transcript import schema as transcript_schema
 from ciscoyoke.transcript import scrub as scrub_module
 from ciscoyoke.transport.identity import IdentityStrength, enumerate_ports
@@ -171,6 +172,19 @@ def cmd_transcript_scrub(args: argparse.Namespace) -> int:
         ),
     )
     return _print(result, args.json, f"{outcome.report()}\n\nWritten: {destination}")
+
+
+def cmd_transcript_replay(args: argparse.Namespace) -> int:
+    """Show what the tracker concludes from a recording, event by event."""
+    try:
+        transcript = transcript_schema.read(Path(args.path))
+    except (OSError, transcript_schema.TranscriptFormatError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return int(ExitCode.DEVICE_NOT_FOUND)
+
+    outcome = replay_module.replay(transcript)
+    result = Result("transcript replay", int(ExitCode.SUCCESS), outcome.to_json())
+    return _print(result, args.json, outcome.render())
 
 
 def _open_session(port: str, baud: int) -> tuple[Session, SerialTransport]:
@@ -367,6 +381,7 @@ def cmd_reset(args: argparse.Namespace) -> int:
             accept_config_loss=args.accept_config_loss,
             archive_to=Path(args.archive_to) if args.archive_to else None,
             platform=args.platform,
+            accept_unverified=args.accept_unverified,
         )
         return _print(
             Result("reset", int(code), {"confirmed": args.confirm}), args.json, rendered
@@ -465,6 +480,14 @@ def build_parser() -> argparse.ArgumentParser:
             "reset is irreversible, so it will not guess"
         ),
     )
+    reset_parser.add_argument(
+        "--accept-unverified",
+        action="store_true",
+        help=(
+            "proceed on a Catalyst family ciscoyoke has no profile for, using "
+            "Cisco's generic procedure"
+        ),
+    )
     reset_parser.set_defaults(handler=cmd_reset)
 
     recover_parser = sub.add_parser("recover", help="access and image recovery")
@@ -491,6 +514,14 @@ def build_parser() -> argparse.ArgumentParser:
             "it back; follow with reset for a clean device"
         ),
     )
+    access_parser.add_argument(
+        "--accept-unverified",
+        action="store_true",
+        help=(
+            "proceed on a Catalyst family ciscoyoke has no profile for, using "
+            "Cisco's generic procedure"
+        ),
+    )
     access_parser.set_defaults(handler=cli_extra.cmd_recover_access_interactive)
     cli_extra.register_recover_image(recover_sub)
 
@@ -513,6 +544,12 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     scrub_parser.set_defaults(handler=cmd_transcript_scrub)
+    replay_parser = transcript_sub.add_parser(
+        "replay",
+        help="show every state the tracker concludes from a recording, and where it stalls",
+    )
+    replay_parser.add_argument("path", help=".ytx or .ytx.pub transcript")
+    replay_parser.set_defaults(handler=cmd_transcript_replay)
 
     cli_extra.register(sub)
 

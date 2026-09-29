@@ -19,6 +19,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from ciscoyoke.diagnose import failure_path, record_failure
 from ciscoyoke.identify import memory
 from ciscoyoke.identify.facts import DeviceFacts
 from ciscoyoke.identify.probe import intake
@@ -35,6 +36,11 @@ from ciscoyoke.lifecycle.archive import (
 )
 from ciscoyoke.lifecycle.health import assess
 from ciscoyoke.lifecycle.rescue import RescueReport, rescue
+from ciscoyoke.platform_profiles import (
+    CatalystProfile,
+    catalyst_profile,
+    unverified_refusal,
+)
 from ciscoyoke.playbook import ios_switch
 from ciscoyoke.playbook.base import PlanRefusedError, StepFailedError, execute, plan
 from ciscoyoke.result.exits import ExitCode
@@ -199,6 +205,42 @@ def recorded(session: Session, operation: str) -> Iterator[Path]:
         write_transcript(path, session.recorder.transcript())
 
 
+def save_failure(
+    port: str,
+    operation: str,
+    error: BaseException,
+    session: Session,
+    transcript: Path,
+    *,
+    profile: CatalystProfile | None = None,
+    model: str | None = None,
+) -> str:
+    """Write what a failed run knew, and say where it went and what to do next.
+
+    Returns text to append to the failure message. Never raises: a failure to
+    write diagnostics must not replace the failure being diagnosed.
+    """
+    try:
+        record = record_failure(
+            operation=operation,
+            error=error,
+            tracker=session.tracker,
+            identity=identity_for(port),
+            profile=profile.to_json() if profile is not None else None,
+            model=model,
+            transcript=transcript,
+        )
+        path = record.write(failure_path(transcript))
+    except Exception as exc:
+        return f"\n\n(diagnostics could not be saved: {exc})"
+    return (
+        f"\n\n{record.summary()}\n\n"
+        f"Diagnostics saved beside the recording:\n  {path}\n"
+        f"To send a report that lets this be fixed without the hardware:\n"
+        f"  ciscoyoke report"
+    )
+
+
 def note_identity(port: str, facts: DeviceFacts, source: str) -> None:
     """Remember an observed model against this adapter, for a later locked run."""
     finding = facts.model
@@ -261,6 +303,7 @@ def do_reset(
     accept_config_loss: bool = False,
     archive_to: Path | None = None,
     platform: str | None = None,
+    accept_unverified: bool = False,
 ) -> tuple[str, ExitCode]:
     """Reset a device to a known-empty baseline.
 
@@ -283,7 +326,9 @@ def do_reset(
 
         model_name, recalled = known_model(port, found.facts.model.value)
         cleanup = None
+        profile = None
         if recover.path_platform(model_name, platform) is recover.Platform.SWITCH:
+            profile = catalyst_profile(model_name)
             bundle, cleanup = _switch_cleanup(session, bundle)
 
         if archive_to:
@@ -318,11 +363,19 @@ def do_reset(
             [
                 bundle.render(),
                 *([f"Platform from memory: {recalled}"] if recalled else []),
+                *([profile.describe()] if profile is not None else []),
                 decision.render(),
                 checked.render(),
                 f"Session recorded to {transcript}",
             ]
         )
+        gate = (
+            unverified_refusal(profile, "reset")
+            if profile is not None and confirm and not accept_unverified
+            else None
+        )
+        if gate:
+            raise CommandError(f"{rendered}\n\n{gate}", ExitCode.STATE_UNCERTAIN)
         if not confirm:
             return (
                 f"{rendered}\n\nDry run. Nothing was sent. "
@@ -336,7 +389,17 @@ def do_reset(
             except (PlanRefusedError, StepFailedError) as exc:
                 journal.finish("failed")
                 raise CommandError(
-                    str(exc), ExitCode.DESTRUCTIVE_ACTION_REFUSED
+                    str(exc)
+                    + save_failure(
+                        port,
+                        "reset",
+                        exc,
+                        session,
+                        transcript,
+                        profile=profile,
+                        model=model_name,
+                    ),
+                    ExitCode.DESTRUCTIVE_ACTION_REFUSED,
                 ) from exc
             journal.finish("completed")
 

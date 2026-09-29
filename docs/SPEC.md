@@ -1091,15 +1091,28 @@ ciscoyoke intake TARGET                   passive-first identity, boot and healt
 ciscoyoke archive TARGET -o DIR           preservation bundle, manifest, disclosed gaps
 ciscoyoke recover access TARGET           access/password recovery playbook
           [--platform router|catalyst]      operator-stated when locked; refused on conflict
+          [--no-restore]                    stop with the old configuration still aside
+          [--accept-unverified]             required on a Catalyst family with no profile
 ciscoyoke recover image TARGET --image B  user-supplied image rescue
-ciscoyoke reset TARGET                    known-empty lab baseline
+ciscoyoke reset TARGET [--accept-unverified]  known-empty lab baseline
 ciscoyoke health TARGET                   POST, flash, memory, environment checks
 ciscoyoke console TARGET                  interactive console with safe recording
-ciscoyoke transcript scrub FILE           deterministic share-safe fixture
+ciscoyoke transcript scrub FILE [--source S]  deterministic share-safe fixture
+ciscoyoke transcript replay FILE          state timeline, evidence, where it stalled
 ciscoyoke lab apply LABFILE
 ciscoyoke lab verify LABFILE
-ciscoyoke support-bundle                  scrubbed transcript, state timeline, host metadata
+ciscoyoke support-bundle                  host metadata and unfinished journals
+ciscoyoke report [--run FILE]             one zip for a remote fix: scrubbed run with
+                                          configuration output removed, failure record,
+                                          host metadata
 ```
+
+A failed destructive run writes `<run>.failure.json` beside its transcript: the
+failed step, what it expected and observed, the last unrecognised prompt, the
+tracker's state history with evidence, the adapter's chipset and USB IDs, and
+the platform profile in use. Platform knowledge per Catalyst family lives in
+`platform_profiles.py`, each entry labelled `hardware`, `documentation` or
+`generic` by where it came from.
 
 `TARGET` is a port, a label (§7.3), or a device serial.
 

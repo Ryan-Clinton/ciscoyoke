@@ -30,6 +30,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ciscoyoke.journal import model
+from ciscoyoke.platform_profiles import CATALYST_2950, CatalystProfile
 from ciscoyoke.playbook.base import (
     Effect,
     Playbook,
@@ -57,7 +58,8 @@ _LOGIN_MEANS_CONFIGURED = (
 # -- reading the device ------------------------------------------------------
 
 
-_ENV_LINE = re.compile(r"^\s*([A-Z_][A-Z0-9_]*)=(.*?)\s*$", re.MULTILINE)
+# "NAME=value" on the 2950; Cisco's 2960-S reference also shows "NAME: value".
+_ENV_LINE = re.compile(r"^\r?\s*([A-Z_][A-Z0-9_]*)\s*[=:]\s*(.*?)\s*$", re.MULTILINE)
 # `dir flash:` on a Catalyst bootloader:
 #     2  -rwx  1674   <date>  config.text
 #     4  drwx  192    <date>  c2950-i6q4l2-mz.121-9.EA1
@@ -151,13 +153,28 @@ def decide_stash(environment: dict[str, str], files: frozenset[str]) -> StashDec
 # -- playbooks ---------------------------------------------------------------
 
 
-def prepare_flash() -> Playbook:
+def prepare_flash(profile: CatalystProfile = CATALYST_2950) -> Playbook:
     """Initialise flash and read what the recovery needs to decide. Read-only.
 
     ``flash_init`` and ``load_helper`` mount and prepare; ``dir`` and ``set``
     only report. Nothing here changes the device, so a recovery that stops
-    after this phase has cost nothing.
+    after this phase has cost nothing. ``load_helper`` is left out where the
+    family's bootloader has no such command (the 2960-S and later).
     """
+    helper = (
+        (
+            Step(
+                name="load_helper",
+                description="load_helper (required on older platforms)",
+                require_state=(State.BOOTLOADER,),
+                expect=(State.BOOTLOADER,),
+                action=send_line(b"load_helper\r"),
+                timeout=30.0,
+            ),
+        )
+        if profile.load_helper
+        else ()
+    )
     return Playbook(
         name="prepare_flash",
         description="Initialise flash and read the boot environment",
@@ -170,14 +187,7 @@ def prepare_flash() -> Playbook:
                 action=send_line(b"flash_init\r"),
                 timeout=60.0,
             ),
-            Step(
-                name="load_helper",
-                description="load_helper (required on older platforms)",
-                require_state=(State.BOOTLOADER,),
-                expect=(State.BOOTLOADER,),
-                action=send_line(b"load_helper\r"),
-                timeout=30.0,
-            ),
+            *helper,
             Step(
                 name="list_flash",
                 description="dir flash: (list contents before changing anything)",
@@ -212,7 +222,41 @@ def _moved(source: str, stash: str) -> Callable[[str], str | None]:
     return check
 
 
-def bypass_configuration(decision: StashDecision) -> Playbook:
+def after_boot_steps(*, refuse: tuple[tuple[State, str], ...] = ()) -> tuple[Step, ...]:
+    """Get from a configuration-less boot to a prompt, whatever IOS asks first.
+
+    The 2950 asks one question (the setup dialog). IOS 15 on a 2960 then asks
+    whether to terminate autoinstall, which wants the opposite answer. Both are
+    optional: a step for a question the device did not ask is skipped rather
+    than answered blind.
+    """
+    return (
+        Step(
+            name="decline_setup_dialog",
+            description="decline the initial configuration dialog",
+            require_state=(State.SETUP_DIALOG,),
+            expect=(State.PRESS_RETURN, State.USER_EXEC, State.AUTOINSTALL),
+            action=send_line(b"no\r"),
+            refuse=refuse,
+            optional=True,
+            timeout=60.0,
+        ),
+        Step(
+            name="terminate_autoinstall",
+            description="terminate autoinstall (IOS 15)",
+            require_state=(State.AUTOINSTALL,),
+            expect=(State.PRESS_RETURN, State.USER_EXEC),
+            action=send_line(b"yes\r"),
+            refuse=refuse,
+            optional=True,
+            timeout=60.0,
+        ),
+    )
+
+
+def bypass_configuration(
+    decision: StashDecision, profile: CatalystProfile = CATALYST_2950
+) -> Playbook:
     """Move the loaded configuration aside, prove it moved, and boot without it.
 
     Reversible by construction: the file is renamed, never deleted, so the
@@ -249,21 +293,17 @@ def bypass_configuration(decision: StashDecision) -> Playbook:
             name="boot",
             description="boot without a configuration",
             require_state=(State.BOOTLOADER,),
-            expect=(State.SETUP_DIALOG, State.PRESS_RETURN, State.USER_EXEC),
+            expect=(
+                State.SETUP_DIALOG,
+                State.AUTOINSTALL,
+                State.PRESS_RETURN,
+                State.USER_EXEC,
+            ),
             action=send_line(b"boot\r"),
             refuse=_LOGIN_MEANS_CONFIGURED,
-            timeout=300.0,
+            timeout=profile.boot_timeout,
         ),
-        Step(
-            name="decline_setup_dialog",
-            description="decline the initial configuration dialog",
-            require_state=(State.SETUP_DIALOG,),
-            expect=(State.PRESS_RETURN, State.USER_EXEC),
-            action=send_line(b"no\r"),
-            refuse=_LOGIN_MEANS_CONFIGURED,
-            optional=True,
-            timeout=60.0,
-        ),
+        *after_boot_steps(refuse=_LOGIN_MEANS_CONFIGURED),
         Step(
             name="enable",
             description="enter privileged mode (no password without a config)",
@@ -335,7 +375,12 @@ PRESUMED = StashDecision(
 )
 
 
-def after_prepare(decision: StashDecision, *, restore: bool = True) -> Playbook:
+def after_prepare(
+    decision: StashDecision,
+    *,
+    restore: bool = True,
+    profile: CatalystProfile = CATALYST_2950,
+) -> Playbook:
     """Everything after the read-only phase, for the file actually loaded.
 
     ``restore=False`` stops at the privileged prompt with the configuration
@@ -345,13 +390,15 @@ def after_prepare(decision: StashDecision, *, restore: bool = True) -> Playbook:
         name="switch_access_recovery",
         description=decision.reason,
         steps=(
-            *bypass_configuration(decision).steps,
+            *bypass_configuration(decision, profile).steps,
             *(restore_configuration(decision).steps if restore else ()),
         ),
     )
 
 
-def full_access_recovery(decision: StashDecision = PRESUMED) -> Playbook:
+def full_access_recovery(
+    decision: StashDecision = PRESUMED, *, profile: CatalystProfile = CATALYST_2950
+) -> Playbook:
     """The whole procedure from the bootloader onwards.
 
     For previewing. A real run executes :func:`prepare_flash` first and builds
@@ -369,5 +416,8 @@ def full_access_recovery(decision: StashDecision = PRESUMED) -> Playbook:
             "From the bootloader: initialise flash, read which configuration "
             "IOS loads, move it aside, boot, then restore and load it"
         ),
-        steps=(*prepare_flash().steps, *after_prepare(decision).steps),
+        steps=(
+            *prepare_flash(profile).steps,
+            *after_prepare(decision, profile=profile).steps,
+        ),
     )

@@ -31,6 +31,7 @@ from ciscoyoke.commands import (
     known_model,
     note_identity,
     recorded,
+    save_failure,
 )
 from ciscoyoke.credentials import Credentials, Secret, from_stdin, prompt
 from ciscoyoke.identify.facts import from_boot_banner
@@ -38,6 +39,13 @@ from ciscoyoke.identify.probe import intake
 from ciscoyoke.journal.store import Journal
 from ciscoyoke.lifecycle import recover
 from ciscoyoke.lifecycle.archive import archive
+from ciscoyoke.platform_profiles import (
+    GENERIC_CATALYST,
+    CatalystProfile,
+    Evidence,
+    catalyst_profile,
+    unverified_refusal,
+)
 from ciscoyoke.playbook import ios_switch
 from ciscoyoke.playbook.base import (
     PlanRefusedError,
@@ -114,23 +122,34 @@ def _read_then_decide(
     announce: Announcer,
     *,
     restore: bool,
+    profile: CatalystProfile,
 ) -> tuple[Playbook, ios_switch.StashDecision]:
     """Run the read-only phase, then build the rest for the file IOS loads."""
     start = len(session.tracker.buffer)
     execute(
-        plan(ios_switch.prepare_flash(), session.transport, session.state.state),
+        plan(ios_switch.prepare_flash(profile), session.transport, session.state.state),
         session,
         journal,
     )
     seen = session.tracker.buffer.text[start:]
     # The bootloader states its model in `set`; seen now, it is remembered for
-    # the next locked run on this adapter.
-    note_identity(port, from_boot_banner(seen), "bootloader")
+    # the next locked run on this adapter -- and can sharpen a generic profile
+    # before anything is changed. The whole stream, not just this phase: the
+    # bootloader banner ("WS-C2960X-24 starting...") came before it.
+    facts = from_boot_banner(session.tracker.buffer.text)
+    note_identity(port, facts, "bootloader")
+    stated_profile = catalyst_profile(facts.model.value)
+    if profile.evidence is Evidence.GENERIC and stated_profile is not profile:
+        profile = stated_profile
+        announce(f"  The bootloader identified {facts.model.value}: {profile.describe()}\n")
     decision = ios_switch.decide_stash(
         ios_switch.boot_environment(seen), ios_switch.flash_files(seen)
     )
     announce(f"  {decision.reason}\n")
-    return ios_switch.after_prepare(decision, restore=restore), decision
+    return (
+        ios_switch.after_prepare(decision, restore=restore, profile=profile),
+        decision,
+    )
 
 
 def do_recover_access_interactive(
@@ -141,6 +160,7 @@ def do_recover_access_interactive(
     archive_to: Path | None = None,
     platform: str | None = None,
     restore: bool = True,
+    accept_unverified: bool = False,
     announce: Announcer = _announce,
 ) -> tuple[str, ExitCode]:
     """Run a full access recovery, including the physical step.
@@ -206,6 +226,25 @@ def do_recover_access_interactive(
                 ExitCode.SUCCESS,
             )
 
+        gate = (
+            unverified_refusal(path.profile, "recover access")
+            if path.profile is not None and not accept_unverified
+            else None
+        )
+        if gate:
+            raise CommandError(f"{preview}\n\n{gate}", ExitCode.STATE_UNCERTAIN)
+
+        def diagnostics(error: BaseException) -> str:
+            return save_failure(
+                port,
+                "recover_access",
+                error,
+                session,
+                transcript,
+                profile=path.profile,
+                model=model_name,
+            )
+
         with journal_for(port, "recover_access") as (_connection, journal):
             try:
                 if path.human_step is not None:
@@ -215,7 +254,12 @@ def do_recover_access_interactive(
                 decision = None
                 if path.platform is recover.Platform.SWITCH:
                     playbook, decision = _read_then_decide(
-                        port, session, journal, announce, restore=restore
+                        port,
+                        session,
+                        journal,
+                        announce,
+                        restore=restore,
+                        profile=path.profile or GENERIC_CATALYST,
                     )
 
                 checked = plan(playbook, session.transport, session.state.state)
@@ -231,17 +275,19 @@ def do_recover_access_interactive(
             except ios_switch.StashRefusedError as exc:
                 journal.finish("refused")
                 raise CommandError(
-                    f"{preview}\n\n{exc}", ExitCode.DESTRUCTIVE_ACTION_REFUSED
+                    f"{preview}\n\n{exc}{diagnostics(exc)}",
+                    ExitCode.DESTRUCTIVE_ACTION_REFUSED,
                 ) from exc
             except HumanActionAbandonedError as exc:
                 journal.finish("abandoned")
                 raise CommandError(
-                    f"{preview}\n\n{exc}", ExitCode.STATE_UNCERTAIN
+                    f"{preview}\n\n{exc}{diagnostics(exc)}", ExitCode.STATE_UNCERTAIN
                 ) from exc
             except (PlanRefusedError, StepFailedError) as exc:
                 journal.finish("failed")
                 raise CommandError(
-                    f"{preview}\n\n{exc}", ExitCode.DESTRUCTIVE_ACTION_REFUSED
+                    f"{preview}\n\n{exc}{diagnostics(exc)}",
+                    ExitCode.DESTRUCTIVE_ACTION_REFUSED,
                 ) from exc
 
             journal.finish("completed")

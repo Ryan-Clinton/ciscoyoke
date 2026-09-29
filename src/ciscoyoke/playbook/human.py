@@ -24,6 +24,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from ciscoyoke.platform_profiles import CATALYST_2950, CatalystProfile
 from ciscoyoke.session import Session, SessionTimeoutError
 from ciscoyoke.stream.signals import SignalKind, detect
 from ciscoyoke.stream.tracker import State
@@ -140,29 +141,29 @@ def perform(
 # -- the physical actions this project actually needs -----------------------
 
 
-def catalyst_mode_button() -> HumanStep:
+def catalyst_mode_button(profile: CatalystProfile = CATALYST_2950) -> HumanStep:
     """Hold Mode while reconnecting power, to reach the bootloader.
 
     The archetypal case: the only route to ``switch:`` on a fixed-configuration
-    Catalyst, and entirely outside software's control.
+    Catalyst, and entirely outside software's control. *When* to let go differs
+    by family -- a 2950 when STAT goes out, a 2960 once SYST has gone amber and
+    then green -- so the wording comes from the platform profile.
     """
     return HumanStep(
         name="catalyst_mode_button",
         instruction=(
-            # Cisco's wording for the 2950 family (password recovery note
-            # 12040): release when STAT goes out, about five seconds in.
             "Unplug the switch. Hold the MODE button down, plug the power back "
-            "in, and release it when the STAT LED goes out (about 5 seconds)."
+            f"in, and {profile.mode_release}."
         ),
         reason=(
             "the bootloader is only reachable through this sequence on this "
             "platform; there is no software path to it"
         ),
         evidence_states=(State.BOOTLOADER,),
-        timeout=180.0,
+        timeout=profile.human_timeout,
         recovery_hint=(
             "If the switch booted normally, the button was released too early. "
-            "Power off and try again, holding until the STAT LED goes out."
+            f"Power off and try again: {profile.mode_release}."
         ),
         wrong_state_hints=(
             (

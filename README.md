@@ -63,7 +63,9 @@ Read-only — safe against hardware in unknown condition:
 | `ciscoyoke rescue PORT` | **the front door** — diagnose, preserve, recommend |
 | `ciscoyoke health PORT` | POST, flash, memory and config-register checks |
 | `ciscoyoke archive PORT` | preserve what the device will disclose |
-| `ciscoyoke transcript scrub` | raw recording → shareable fixture |
+| `ciscoyoke transcript scrub` | raw recording → shareable fixture (`--source` records `hardware:` / `synthetic:` provenance) |
+| `ciscoyoke transcript replay FILE` | every state the tracker concludes from a recording, the evidence for each, and the prompt it stalled on |
+| `ciscoyoke report` | package the last run into one shareable zip: scrubbed transcript with configuration output removed, the failure record, host diagnostics |
 
 Destructive — leased, journalled, dry-run by default, `--confirm` required:
 
@@ -92,7 +94,7 @@ the working path.
 
 ## Hardware support
 
-Nothing is claimed until it is earned — and nothing has been earned yet.
+Nothing is claimed until it is earned.
 
 **One real device so far: a WS-C2950G-24-EI.** Password recovery and reset
 have run against it end to end, and it found six defects the synthetic
@@ -116,9 +118,38 @@ output to pin the parsers and the state machine. See
 | Cisco 1760 | — | — | — | — |
 | Catalyst 2950 | ● [cold boot](tests/fixtures/hw-switch-2950-cold-boot-locked.ytx.pub) | ● [no-restore](tests/fixtures/hw-switch-2950-recover-no-restore.ytx.pub) | — | — ¹ |
 | Catalyst 3550 | — | — | — | — |
-| Catalyst 2960 | — | — | — | — |
+| Catalyst 2960 | ○ | ○ | — | ○ |
+| Catalyst 2960-S / X / Plus | ○ | ○ | — | ○ |
 
-Every ● and ◐ links to the transcript fixture that earned it.
+Every ● and ◐ links to the transcript fixture that earned it. The ○ rows come
+from `src/ciscoyoke/platform_profiles.py`, which holds one entry per Catalyst
+family (when to release Mode, whether `load_helper` exists, how long a boot
+takes, what console port the front panel has) and names the Cisco document each
+entry was taken from. A 2960 is told to release Mode once SYST has gone amber
+and then green, not the 2950's "when STAT goes out"; IOS 15's "terminate
+autoinstall?" is answered yes. A Catalyst family with no entry gets Cisco's
+generic procedure with longer waits, and its destructive commands need
+`--accept-unverified`.
+
+### When it fails on your hardware
+
+Every destructive run records itself. When one fails it also writes down what a
+fix needs — the step, what it expected, what it saw, the last line that looked
+like the device waiting for an answer, the tracker's state history, and the
+adapter's chipset — and says so:
+
+```
+ciscoyoke report          # one zip: scrubbed run, failure record, host diagnostics
+```
+
+Configuration output is cut out of the report rather than scrubbed, because a
+scrubber cannot know a banner names somebody. Read the transcript inside it,
+then attach the zip to a [hardware report](../../issues/new?template=hardware-report.yml)
+with the model from the label and what the LEDs did. On this side,
+`ciscoyoke transcript replay` shows exactly where the tracker lost the thread,
+and the transcript becomes the fixture for the failing test that the fix makes
+pass — the same loop that turned the 2950's first failures into
+`tests/test_hardware_fixtures.py`.
 
 ¹ Reset has run end to end on the 2950, but its recording is not committed: it
 had to read the previous owner's configuration into the archive before deleting

@@ -17,7 +17,12 @@ import socket
 from dataclasses import dataclass
 from enum import StrEnum
 
-from ciscoyoke.transport.identity import PortIdentity, enumerate_ports, find_ambiguities
+from ciscoyoke.transport.identity import (
+    CISCO_VENDOR,
+    PortIdentity,
+    enumerate_ports,
+    find_ambiguities,
+)
 
 TFTP_PORT = 69
 
@@ -105,6 +110,51 @@ def check_port_permissions(identities: tuple[PortIdentity, ...]) -> Check:
     return Check("port permissions", CheckStatus.OK, "read/write on all ports")
 
 
+_PROLIFIC = 0x067B
+_CH340 = 0x1A86
+
+
+def check_adapters(identities: tuple[PortIdentity, ...]) -> tuple[Check, ...]:
+    """Name the adapters known to cause trouble, before a run finds out.
+
+    "Nothing came back at all" is as often the cable as the switch, and the
+    two commonest cable causes are recognisable from the USB descriptor alone.
+    """
+    checks: list[Check] = []
+    for identity in identities:
+        if identity.vid == _PROLIFIC:
+            checks.append(
+                Check(
+                    f"adapter {identity.device}",
+                    CheckStatus.UNKNOWN,
+                    "Prolific PL2303: current Windows drivers refuse many clone "
+                    "chips (Device Manager 'Code 10', 'PL2303HXA phased out'). If "
+                    "the port opens but nothing ever arrives, suspect the cable; "
+                    "an FTDI-based cable is the reliable replacement",
+                )
+            )
+        elif identity.vid == _CH340:
+            checks.append(
+                Check(
+                    f"adapter {identity.device}",
+                    CheckStatus.OK,
+                    "CH340: works, but reports no USB serial number, so it is "
+                    "recognised by the USB socket it is in, not by the cable",
+                )
+            )
+        elif identity.vid == CISCO_VENDOR:
+            checks.append(
+                Check(
+                    f"adapter {identity.device}",
+                    CheckStatus.OK,
+                    "Cisco USB console port: on Windows this needs Cisco's USB "
+                    "console driver; while it is connected the switch's RJ-45 "
+                    "console port is disabled",
+                )
+            )
+    return tuple(checks)
+
+
 def check_tftp_bind(port: int = TFTP_PORT) -> Check:
     """Probe whether the embedded TFTP server could bind its port.
 
@@ -176,6 +226,7 @@ def run() -> Diagnosis:
         checks=(
             library,
             ports_check,
+            *check_adapters(identities),
             check_port_permissions(identities),
             check_tftp_bind(),
             check_firewall(),

@@ -24,6 +24,7 @@ class SignalKind(StrEnum):
     ROMMON_PROMPT = "rommon_prompt"
     BOOTLOADER_PROMPT = "bootloader_prompt"
     SETUP_DIALOG = "setup_dialog"
+    AUTOINSTALL_PROMPT = "autoinstall_prompt"
     PRESS_RETURN = "press_return"
     USERNAME_PROMPT = "username_prompt"
     PASSWORD_PROMPT = "password_prompt"
@@ -68,9 +69,24 @@ _ANCHORED: tuple[tuple[SignalKind, re.Pattern[str], str], ...] = (
     ),
     (
         SignalKind.SETUP_DIALOG,
+        # The 2950 asks the first; Cisco's 2960 recovery procedure shows the
+        # second. Either way the answer is "no".
         re.compile(
-            r"(Would you like to enter the initial configuration dialog\?"
+            r"((?:Would you like to enter the initial configuration dialog\?|"
+            r"Continue with (?:the )?configuration dialog\?)"
             r"\s*\[yes/no\]:)\s*\Z",
+            re.IGNORECASE,
+        ),
+        "interactive_question",
+    ),
+    (
+        # IOS 15 on a switch with no configuration, after setup is declined.
+        # A separate signal because the right answer is the opposite of the
+        # setup dialog's: "yes" stops autoinstall, "no" leaves it hunting for
+        # a TFTP server and spamming the console.
+        SignalKind.AUTOINSTALL_PROMPT,
+        re.compile(
+            r"(Would you like to terminate autoinstall\?\s*\[yes(?:/no)?\]:)\s*\Z",
             re.IGNORECASE,
         ),
         "interactive_question",

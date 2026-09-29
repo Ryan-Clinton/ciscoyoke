@@ -37,6 +37,9 @@ class State(StrEnum):
     ROMMON = "rommon"
     BOOTLOADER = "bootloader"
     SETUP_DIALOG = "setup_dialog"
+    AUTOINSTALL = "autoinstall"
+    """IOS 15 asking whether to terminate autoinstall; the answer is yes."""
+
     PRESS_RETURN = "press_return"
     LOGIN_USERNAME = "login_username"
     LOGIN_PASSWORD = "login_password"
@@ -101,6 +104,7 @@ _DIRECT: dict[SignalKind, State] = {
     SignalKind.ROMMON_PROMPT: State.ROMMON,
     SignalKind.BOOTLOADER_PROMPT: State.BOOTLOADER,
     SignalKind.SETUP_DIALOG: State.SETUP_DIALOG,
+    SignalKind.AUTOINSTALL_PROMPT: State.AUTOINSTALL,
     SignalKind.PAGER: State.PAGER,
     SignalKind.CONFIRM_PROMPT: State.CONFIRM,
     SignalKind.SAVE_CONFIG_PROMPT: State.SAVE_CONFIG_PROMPT,

@@ -1,0 +1,74 @@
+name: Hardware report
+description: ciscoyoke failed, or did something odd, on a real device
+labels: ["hardware"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. A report from hardware nobody here owns is only fixable from what it contains, so the questions below ask for the few things a recording can't hold.
+
+        Please attach the zip from `ciscoyoke report`, and **open `transcript.ytx.pub` inside it and read it first**. The report removes configuration output and scrubs passwords, keys, addresses, hostnames, serial numbers and MAC addresses, but no scrubber can know everything that identifies you or a previous owner.
+
+  - type: input
+    id: model
+    attributes:
+      label: Model, exactly as printed on the label
+      placeholder: WS-C2960-24TT-L
+    validations:
+      required: true
+
+  - type: dropdown
+    id: command
+    attributes:
+      label: What were you running?
+      options:
+        - recover access
+        - reset
+        - intake / capture / scan
+        - something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: leds
+    attributes:
+      label: What the LEDs did (for a Mode-button step)
+      description: When you held MODE, what did SYST / STAT do, and when did you let go?
+      placeholder: SYST went amber after ~3s, then green; I let go when it went green.
+
+  - type: dropdown
+    id: console
+    attributes:
+      label: Console connection
+      options:
+        - RJ-45 console port, USB-to-RJ45 cable
+        - RJ-45 console port, DB9 cable + USB adapter
+        - USB mini-B console port on the switch
+        - Built-in serial port
+        - Console server (ConsolePi / ser2net)
+        - Don't know
+    validations:
+      required: true
+
+  - type: input
+    id: cable
+    attributes:
+      label: Cable or adapter chipset, if known
+      description: "`ciscoyoke doctor` and `ciscoyoke ports` print it: FTDI, Prolific, CH340, Cisco USB console..."
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The last few lines ciscoyoke printed are the most useful part.
+      render: text
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: reviewed
+    attributes:
+      label: Before submitting
+      options:
+        - label: I opened transcript.ytx.pub in the report and it contains nothing I'm not happy to publish.
+          required: true

@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from ciscoyoke.platform_profiles import CatalystProfile, catalyst_profile
 from ciscoyoke.playbook import human, ios_router, ios_switch
 from ciscoyoke.playbook.base import Playbook
 from ciscoyoke.playbook.human import HumanStep
@@ -53,6 +54,7 @@ class RecoveryPath:
     playbook: Playbook
     human_step: HumanStep | None
     note: str
+    profile: CatalystProfile | None = None
 
     @property
     def needs_a_person(self) -> bool:
@@ -63,6 +65,10 @@ class RecoveryPath:
             f"Recovery path: {self.platform.value}",
             f"  {self.playbook.description}",
         ]
+        if self.profile is not None:
+            lines.append(f"  {self.profile.describe()}")
+            if not self.profile.verified:
+                lines.append(f"  Procedure source: {self.profile.source}")
         if self.human_step is not None:
             lines += [
                 "",
@@ -127,12 +133,16 @@ def path_for(
     platform = observed if observed is not Platform.UNKNOWN else claimed
 
     if platform is Platform.SWITCH:
+        profile = catalyst_profile(model)
         return RecoveryPath(
             platform=platform,
-            playbook=ios_switch.full_access_recovery(),
+            playbook=ios_switch.full_access_recovery(profile=profile),
             human_step=(
-                None if state is State.BOOTLOADER else human.catalyst_mode_button()
+                None
+                if state is State.BOOTLOADER
+                else human.catalyst_mode_button(profile)
             ),
+            profile=profile,
             note=(
                 "The configuration is renamed rather than erased, so the "
                 "previous owner's settings survive and can be restored."

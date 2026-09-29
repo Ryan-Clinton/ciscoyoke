@@ -32,10 +32,11 @@ _VENDORS: dict[int, str] = {
     0x0557: "ATEN",
 }
 
-# Cisco's own USB console ports, which appear as CDC-ACM rather than a
-# USB-serial bridge.
-_CISCO_VENDOR = 0x1CF1
-_VENDORS[_CISCO_VENDOR] = "Cisco"
+# Cisco's own USB console ports (the mini-B on a 2960-S/X, ISR 4K and others),
+# which appear as CDC-ACM rather than a USB-serial bridge: VID 05A6, PID 0009.
+# This was 0x1CF1 until checked -- that ID belongs to someone else entirely.
+CISCO_VENDOR = 0x05A6
+_VENDORS[CISCO_VENDOR] = "Cisco USB console"
 
 
 class IdentityStrength(StrEnum):
