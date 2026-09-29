@@ -5,7 +5,7 @@ the format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.1.0a1] - not yet released
+## [0.1.0a1] - 2026-09-30
 
 First public alpha. Run end to end on a real Catalyst 2950; the 2960 family is
 implemented from Cisco's documentation and wants testers.
