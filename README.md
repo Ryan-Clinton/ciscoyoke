@@ -3,6 +3,7 @@
 [![CI](https://github.com/Ryan-Clinton/ciscoyoke/actions/workflows/ci.yml/badge.svg)](https://github.com/Ryan-Clinton/ciscoyoke/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-green.svg)](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/ciscoyoke.svg)](https://pypi.org/project/ciscoyoke/)
 [![Status: early alpha](https://img.shields.io/badge/status-early%20alpha-orange.svg)](#hardware-tested-and-wanted)
 
 **Rescue old Cisco hardware from the serial console.**
@@ -32,8 +33,7 @@ with the long silences shortened. Serial numbers and MAC scrubbed.</sub></p>
 ## Try it
 
 ```bash
-pipx install git+https://github.com/Ryan-Clinton/ciscoyoke   # works today
-# pipx install ciscoyoke                                      # from PyPI, once 0.1.0a1 is released
+pipx install ciscoyoke
 
 ciscoyoke doctor          # is the cable and adapter OK?
 ciscoyoke scan            # what is on every serial port?

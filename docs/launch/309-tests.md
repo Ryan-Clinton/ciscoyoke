@@ -116,7 +116,7 @@ configuration isn't mine to publish, however well it scrubs.
 the design had missed. If you have an old Catalyst or ISR in a cupboard, I'd
 love a `ciscoyoke report` from it:
 
-    pipx install git+https://github.com/Ryan-Clinton/ciscoyoke
+    pipx install ciscoyoke
     ciscoyoke rescue COM4
 
 https://github.com/Ryan-Clinton/ciscoyoke

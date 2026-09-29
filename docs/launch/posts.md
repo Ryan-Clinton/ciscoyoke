@@ -2,7 +2,6 @@
 DRAFT community posts. Read each subreddit's rules on self-promotion first:
 several allow a project post only occasionally, or only with a flair, or only
 in a weekly thread. Lead with the story and ask for hardware reports, not stars.
-Swap the install line for `pipx install ciscoyoke` once 0.1.0a1 is on PyPI.
 -->
 
 ## r/homelab
@@ -28,7 +27,7 @@ It's alpha. It's been run end to end on a 2950; the 2960 family is implemented
 from Cisco's docs and has **never met one**. If you've got a 2960, 3560 or an
 old ISR, a `ciscoyoke report` from it would help more than anything.
 
-`pipx install git+https://github.com/Ryan-Clinton/ciscoyoke`, then
+`pipx install ciscoyoke`, then
 `ciscoyoke rescue COM4`, which is read-only.
 
 ## r/Cisco
