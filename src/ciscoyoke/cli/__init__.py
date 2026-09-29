@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 """Command-line interface.
 
 Every command supports ``--json`` and returns a documented exit code, so this
@@ -30,6 +31,7 @@ commands and the thin ``cmd_*`` handlers that call the real work elsewhere;
 
 from __future__ import annotations
 
+import argparse
 from collections.abc import Sequence
 
 from ciscoyoke.cli.parser import build_parser
@@ -37,8 +39,20 @@ from ciscoyoke.cli.parser import build_parser
 __all__ = ["build_parser", "main"]
 
 
+def _enable_completion(parser: argparse.ArgumentParser) -> None:
+    """Wire up argcomplete tab completion when the optional extra is installed."""
+    try:
+        import argcomplete
+    except ImportError:
+        return
+    argcomplete.autocomplete(parser)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
+    if argv is None:
+        _enable_completion(parser)
     args = parser.parse_args(argv)
     handler = args.handler
     return int(handler(args))
+

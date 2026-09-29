@@ -34,6 +34,7 @@ dependencies = [
 
 [project.optional-dependencies]
 tftp = ["tftpy>=0.8"]
+completion = ["argcomplete>=3.0"]
 dev = [
     "pytest>=8.0",
     "hypothesis>=6.100",
@@ -88,7 +89,7 @@ warn_unreachable = true
 files = ["src/ciscoyoke"]
 
 [[tool.mypy.overrides]]
-module = ["serial.*", "tftpy.*"]
+module = ["argcomplete.*", "serial.*", "tftpy.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
