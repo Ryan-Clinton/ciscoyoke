@@ -17,6 +17,11 @@ from ciscoyoke.stream.tracker import Basis, Confidence, State, StateTracker
         (b"\r\nRouter(config)#", State.CONFIG_MODE),
         (b"\r\nRouter(config-if)#", State.CONFIG_MODE),
         (b"\r\nswitch: ", State.BOOTLOADER),
+        # Byte-for-byte what a real WS-C2950G-24-EI bootloader sends: LF *then*
+        # CR. Every synthetic fixture used CRLF, and recovery timed out against
+        # hardware sitting at this exact prompt.
+        (b"\n\rswitch: ", State.BOOTLOADER),
+        (b"\n\rRouter#", State.PRIV_EXEC),
         (b"\r\nrommon 1 > ", State.ROMMON),
         (b"\r\nrommon 17 > ", State.ROMMON),
         (b"\r\n--More-- ", State.PAGER),

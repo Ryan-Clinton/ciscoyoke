@@ -107,7 +107,14 @@ def emit(text: str, style: Style | None = None, stream: TextIO | None = None) ->
     active = style if style is not None else Style(target)
     rendered = active.render(text)
     try:
-        print(rendered, file=target)
+        # Flushed: a human step prints an instruction and then waits minutes for
+        # a person. Buffered, the instruction sits unseen whenever stdout is a
+        # pipe or a file rather than a terminal.
+        print(rendered, file=target, flush=True)
     except UnicodeEncodeError:  # pragma: no cover - last-resort belt and braces
         encoding = getattr(target, "encoding", "ascii") or "ascii"
-        print(rendered.encode(encoding, "replace").decode(encoding), file=target)
+        print(
+            rendered.encode(encoding, "replace").decode(encoding),
+            file=target,
+            flush=True,
+        )

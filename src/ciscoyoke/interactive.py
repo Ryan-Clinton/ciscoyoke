@@ -19,7 +19,9 @@ the tool has done anything at all.
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from ciscoyoke.commands import (
@@ -31,13 +33,23 @@ from ciscoyoke.commands import (
 )
 from ciscoyoke.credentials import Credentials, Secret, from_stdin, prompt
 from ciscoyoke.identify.probe import intake
+from ciscoyoke.journal.paths import transcripts_dir
+from ciscoyoke.journal.store import Journal
 from ciscoyoke.lifecycle import recover
 from ciscoyoke.lifecycle.archive import archive
-from ciscoyoke.playbook.base import PlanRefusedError, StepFailedError, execute, plan
+from ciscoyoke.playbook import ios_switch
+from ciscoyoke.playbook.base import (
+    PlanRefusedError,
+    Playbook,
+    StepFailedError,
+    execute,
+    plan,
+)
 from ciscoyoke.playbook.human import HumanActionAbandonedError, perform
 from ciscoyoke.result.exits import ExitCode
 from ciscoyoke.session import Session
 from ciscoyoke.stream.tracker import State
+from ciscoyoke.transcript.schema import write as write_transcript
 from ciscoyoke.transport.serial_ import DEFAULT_BAUD
 
 Announcer = Callable[[str], None]
@@ -95,12 +107,47 @@ def authenticate(session: Session, credentials: Credentials) -> bool:
     return session.state.state is State.PRIV_EXEC
 
 
+@contextmanager
+def recorded(session: Session, operation: str) -> Iterator[Path]:
+    """Save the session's raw transcript when the block exits, however it exits.
+
+    A recovery that fails part-way is exactly the run whose recording matters
+    most, so this writes in ``finally`` -- and yields the path up front so the
+    failure message can say where to look.
+    """
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    path = transcripts_dir() / f"{stamp}-{operation}.ytx"
+    try:
+        yield path
+    finally:
+        write_transcript(path, session.recorder.transcript())
+
+
+def _read_then_decide(
+    session: Session, journal: Journal, announce: Announcer
+) -> Playbook:
+    """Run the read-only phase, then build the rest for the file IOS loads."""
+    start = len(session.tracker.buffer)
+    execute(
+        plan(ios_switch.prepare_flash(), session.transport, session.state.state),
+        session,
+        journal,
+    )
+    seen = session.tracker.buffer.text[start:]
+    decision = ios_switch.decide_stash(
+        ios_switch.boot_environment(seen), ios_switch.flash_files(seen)
+    )
+    announce(f"  {decision.reason}\n")
+    return ios_switch.after_prepare(decision)
+
+
 def do_recover_access_interactive(
     port: str,
     *,
     baud: int = DEFAULT_BAUD,
     confirm: bool = False,
     archive_to: Path | None = None,
+    platform: str | None = None,
     announce: Announcer = _announce,
 ) -> tuple[str, ExitCode]:
     """Run a full access recovery, including the physical step.
@@ -113,17 +160,28 @@ def do_recover_access_interactive(
     if blocked:
         raise CommandError(blocked, ExitCode.INTERRUPTED_RECOVERY)
 
-    with held(port, "recover_access"), device_session(port, baud) as session:
+    with (
+        held(port, "recover_access"),
+        device_session(port, baud) as session,
+        recorded(session, "recover_access") as transcript,
+    ):
         found = intake(session)
         bundle = archive(session, found)
         if archive_to:
             bundle.write(archive_to)
 
-        path = recover.path_for(found.facts.model.value, session.state.state)
+        try:
+            path = recover.path_for(
+                found.facts.model.value, session.state.state, platform=platform
+            )
+        except ValueError as exc:
+            raise CommandError(str(exc), ExitCode.STATE_UNCERTAIN) from exc
         if path.platform is recover.Platform.UNKNOWN:
             raise CommandError(path.note, ExitCode.STATE_UNCERTAIN)
 
-        preview = "\n\n".join([bundle.render(), path.render()])
+        preview = "\n\n".join(
+            [bundle.render(), path.render(), f"Session recorded to {transcript}"]
+        )
 
         if not confirm:
             return (
@@ -137,9 +195,11 @@ def do_recover_access_interactive(
                 if path.human_step is not None:
                     perform(path.human_step, session, announce)
 
-                checked = plan(
-                    path.playbook, session.transport, session.state.state
-                )
+                playbook = path.playbook
+                if path.platform is recover.Platform.SWITCH:
+                    playbook = _read_then_decide(session, journal, announce)
+
+                checked = plan(playbook, session.transport, session.state.state)
                 if not checked.safe:
                     journal.finish("refused")
                     raise CommandError(
@@ -149,6 +209,11 @@ def do_recover_access_interactive(
                 announce(checked.render())
                 execute(checked, session, journal, confirm=True)
 
+            except ios_switch.StashRefusedError as exc:
+                journal.finish("refused")
+                raise CommandError(
+                    f"{preview}\n\n{exc}", ExitCode.DESTRUCTIVE_ACTION_REFUSED
+                ) from exc
             except HumanActionAbandonedError as exc:
                 journal.finish("abandoned")
                 raise CommandError(

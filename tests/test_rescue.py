@@ -183,6 +183,36 @@ def test_an_unknown_platform_is_not_guessed_at() -> None:
     assert "Identify the device first" in path.note
 
 
+def test_a_stated_platform_fills_in_for_a_locked_device() -> None:
+    """A 2950 at ``Username:`` discloses nothing; the chassis label can."""
+    path = path_for(None, State.LOGIN_USERNAME, platform="catalyst")
+
+    assert path.platform is Platform.SWITCH
+    assert path.needs_a_person is True
+
+
+def test_a_stated_platform_that_contradicts_the_device_is_refused() -> None:
+    path = path_for("CISCO1760", State.LOGIN_PASSWORD, platform="catalyst")
+
+    assert path.platform is Platform.UNKNOWN
+    assert path.playbook.steps == ()
+    assert "disagree" in path.note
+
+
+def test_a_stated_platform_that_agrees_changes_nothing() -> None:
+    agreed = path_for("WS-C2950-24", State.BOOTLOADER, platform="catalyst")
+    alone = path_for("WS-C2950-24", State.BOOTLOADER)
+
+    assert agreed.platform is alone.platform is Platform.SWITCH
+    assert agreed.playbook.name == alone.playbook.name
+    assert agreed.note == alone.note
+
+
+def test_an_unrecognised_stated_platform_is_an_error() -> None:
+    with pytest.raises(ValueError, match="expected 'router' or 'catalyst'"):
+        path_for(None, State.LOGIN_USERNAME, platform="firewall")
+
+
 def test_the_switch_path_explains_it_preserves_the_config() -> None:
     path = path_for("WS-C2950-24", State.BOOTLOADER)
     assert "renamed rather than erased" in path.note

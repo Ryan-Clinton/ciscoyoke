@@ -74,14 +74,51 @@ class RecoveryPath:
         return "\n".join(lines)
 
 
-def path_for(model: str | None, state: State) -> RecoveryPath:
+def stated(platform: str | None) -> Platform:
+    """Read an operator-stated platform, spelled as ``reset --platform`` takes it."""
+    if not platform:
+        return Platform.UNKNOWN
+    chosen = platform.strip().lower()
+    if chosen in ("router", "ios", "rommon"):
+        return Platform.ROUTER
+    if chosen in ("switch", "catalyst"):
+        return Platform.SWITCH
+    raise ValueError(
+        f"unknown platform {platform!r}; expected 'router' or 'catalyst'"
+    )
+
+
+def path_for(
+    model: str | None, state: State, *, platform: str | None = None
+) -> RecoveryPath:
     """Pick a recovery path from what is actually known.
 
     An unknown model is not guessed at. Recovery procedures are destructive in
     different ways on the two families -- one changes a register, the other
     renames a file in flash -- and running the wrong one is worse than asking.
+
+    ``platform`` is the operator supplying what a locked device will not say
+    (a 2950 at ``Username:`` discloses nothing). It fills the gap only: when
+    the device *has* identified itself and the two disagree, nothing runs.
     """
-    platform = classify(model)
+    observed = classify(model)
+    claimed = stated(platform)
+    if (
+        observed is not Platform.UNKNOWN
+        and claimed is not Platform.UNKNOWN
+        and observed is not claimed
+    ):
+        return RecoveryPath(
+            platform=Platform.UNKNOWN,
+            playbook=Playbook(name="unknown", steps=()),
+            human_step=None,
+            note=(
+                f"--platform says {claimed.value}, but the device identified "
+                f"itself as {model} ({observed.value}). Nothing will run while "
+                "the two disagree."
+            ),
+        )
+    platform = observed if observed is not Platform.UNKNOWN else claimed
 
     if platform is Platform.SWITCH:
         return RecoveryPath(
@@ -120,6 +157,7 @@ def path_for(model: str | None, state: State) -> RecoveryPath:
         note=(
             "The platform could not be identified, and the two recovery "
             "procedures are destructive in different ways. Identify the device "
-            "first: ciscoyoke intake, or read the label on the chassis."
+            "first (ciscoyoke intake), or read the label on the chassis and "
+            "state it with --platform router|catalyst."
         ),
     )

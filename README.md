@@ -70,7 +70,7 @@ Destructive — leased, journalled, dry-run by default, `--confirm` required:
 | | |
 | --- | --- |
 | `ciscoyoke reset PORT` | erase to a known-empty baseline |
-| `ciscoyoke recover access PORT` | platform-aware password recovery, including the guided Mode-button sequence |
+| `ciscoyoke recover access PORT` | platform-aware password recovery, including the guided Mode-button sequence. On a Catalyst it reads `CONFIG_FILE` and the flash listing before renaming anything, confirms the rename from a fresh listing, and saves a raw transcript of every run. `--platform router\|catalyst` states what a locked device won't disclose, and is refused if the device contradicts it |
 | `ciscoyoke recover image PORT --image F` | XMODEM rescue for a device with no bootable image, ending in boot proof |
 | `ciscoyoke lab apply LABFILE` | push per-device configuration |
 | `ciscoyoke login PORT` | authenticate with credentials you already have |

@@ -66,7 +66,13 @@ def test_releasing_the_button_early_is_diagnosed_specifically() -> None:
     """'Expected the bootloader, saw a normal boot' tells the operator what to
     do differently. 'Timed out' does not."""
     session, _ = session_over(
-        (Record(0.0, Direction.RX, b"\r\nPress RETURN to get started!\r\n"),)
+        (
+            Record(0.0, Direction.RX, b'Loading "flash:c2950-i6q4l2-mz.121-9.EA1.bin"...###\r\n'),
+            # The IOS banner that follows on real hardware, long enough that
+            # the loader line has left the detection window by the prompt.
+            Record(0.5, Direction.RX, b"              Restricted Rights Legend\r\n" * 16),
+            Record(1.0, Direction.RX, b"\r\nPress RETURN to get started!\r\n"),
+        )
     )
 
     step = catalyst_mode_button()
@@ -80,6 +86,21 @@ def test_releasing_the_button_early_is_diagnosed_specifically() -> None:
     # says something more useful than "the button was not held".
     assert "completed a normal boot" in message
     assert "holding MODE for longer" in message
+
+
+def test_a_switch_that_never_restarted_is_not_blamed_on_the_button() -> None:
+    """From a real 2950 run: the switch sat booted for the whole wait, emitting
+    only its periodic log line, and the tool reported a 'normal boot' that
+    never happened. No boot output means no power cycle."""
+    session, _ = session_at(b"\r\nPress RETURN to get started.\r\n\r\n")
+    session.tracker.feed(b"\r\n*Mar  1 00:12:18.759: %IP_SNMP-3-SOCKET: can't open UDP socket")
+
+    with pytest.raises(HumanActionAbandonedError) as excinfo:
+        perform(catalyst_mode_button(), session, lambda _t: None)
+
+    message = str(excinfo.value)
+    assert "never lost power" in message
+    assert "completed a normal boot" not in message
 
 
 def test_recovery_disabled_during_a_human_step_is_called_out() -> None:

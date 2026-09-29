@@ -58,12 +58,12 @@ class Signal:
 _ANCHORED: tuple[tuple[SignalKind, re.Pattern[str], str], ...] = (
     (
         SignalKind.ROMMON_PROMPT,
-        re.compile(r"(?:^|\n)(rommon\s+\d+\s*>)[ \t]*\Z"),
+        re.compile(r"(?:^|[\r\n])(rommon\s+\d+\s*>)[ \t]*\Z"),
         "line_end_after_quiescence",
     ),
     (
         SignalKind.BOOTLOADER_PROMPT,
-        re.compile(r"(?:^|\n)(switch:)[ \t]*\Z"),
+        re.compile(r"(?:^|[\r\n])(switch:)[ \t]*\Z"),
         "line_end_after_quiescence",
     ),
     (
@@ -120,17 +120,17 @@ _ANCHORED: tuple[tuple[SignalKind, re.Pattern[str], str], ...] = (
     ),
     (
         SignalKind.CONFIG_PROMPT,
-        re.compile(r"(?:^|\n)([\w.\-]+\((?:config)[^)]*\)#)[ \t]*\Z"),
+        re.compile(r"(?:^|[\r\n])([\w.\-]+\((?:config)[^)]*\)#)[ \t]*\Z"),
         "line_end_after_quiescence",
     ),
     (
         SignalKind.PRIV_EXEC_PROMPT,
-        re.compile(r"(?:^|\n)([\w.\-]+#)[ \t]*\Z"),
+        re.compile(r"(?:^|[\r\n])([\w.\-]+#)[ \t]*\Z"),
         "line_end_after_quiescence",
     ),
     (
         SignalKind.USER_EXEC_PROMPT,
-        re.compile(r"(?:^|\n)([\w.\-]+>)[ \t]*\Z"),
+        re.compile(r"(?:^|[\r\n])([\w.\-]+>)[ \t]*\Z"),
         "line_end_after_quiescence",
     ),
     (

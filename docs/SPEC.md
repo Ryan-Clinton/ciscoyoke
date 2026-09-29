@@ -1090,6 +1090,7 @@ ciscoyoke scan                            enumerate endpoints; observed facts an
 ciscoyoke intake TARGET                   passive-first identity, boot and health evidence
 ciscoyoke archive TARGET -o DIR           preservation bundle, manifest, disclosed gaps
 ciscoyoke recover access TARGET           access/password recovery playbook
+          [--platform router|catalyst]      operator-stated when locked; refused on conflict
 ciscoyoke recover image TARGET --image B  user-supplied image rescue
 ciscoyoke reset TARGET                    known-empty lab baseline
 ciscoyoke health TARGET                   POST, flash, memory, environment checks

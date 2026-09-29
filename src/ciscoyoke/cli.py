@@ -465,6 +465,14 @@ def build_parser() -> argparse.ArgumentParser:
     access_parser.add_argument("--baud", type=int, default=DEFAULT_BAUD)
     access_parser.add_argument("--confirm", action="store_true")
     access_parser.add_argument("--archive-to", help="write the archive bundle here")
+    access_parser.add_argument(
+        "--platform",
+        choices=("router", "catalyst"),
+        help=(
+            "state the platform when a locked device will not identify itself; "
+            "refused if it contradicts what the device reports"
+        ),
+    )
     access_parser.set_defaults(handler=cli_extra.cmd_recover_access_interactive)
     cli_extra.register_recover_image(recover_sub)
 

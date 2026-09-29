@@ -25,6 +25,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ciscoyoke.session import Session, SessionTimeoutError
+from ciscoyoke.stream.signals import SignalKind, detect
 from ciscoyoke.stream.tracker import State
 
 #: Shows an instruction to the operator. Returns nothing.
@@ -110,12 +111,27 @@ def perform(
     tells them nothing.
     """
     announce(step.render())
+    mark = len(session.tracker.buffer)
 
     try:
         observation = session.wait_for(step.evidence_states, timeout=step.timeout)
     except SessionTimeoutError as exc:
         observed = session.state.state
-        raise HumanActionAbandonedError(step, observed, step.hint_for(observed)) from exc
+        since = session.tracker.buffer.text[mark:]
+        restarted = (SignalKind.BOOT_ACTIVITY, SignalKind.RECOVERY_DISABLED)
+        if not any(signal.kind in restarted for signal in detect(since)):
+            # The state at timeout may be left over from before the
+            # instruction. With no boot output at all, the honest reading is
+            # that the device was never power-cycled -- not that it was, and
+            # the person got the button wrong.
+            hint = (
+                f"The console showed no restart in {int(step.timeout)}s, so "
+                f"the device never lost power. Nothing was changed; re-run "
+                f"when ready to do the physical step."
+            )
+        else:
+            hint = step.hint_for(observed)
+        raise HumanActionAbandonedError(step, observed, hint) from exc
 
     announce(f"  ✓ observed: {observation.state.value}\n\n  Continuing automatically.\n")
     return observation.state
@@ -133,8 +149,10 @@ def catalyst_mode_button() -> HumanStep:
     return HumanStep(
         name="catalyst_mode_button",
         instruction=(
+            # Cisco's wording for the 2950 family (password recovery note
+            # 12040): release when STAT goes out, about five seconds in.
             "Unplug the switch. Hold the MODE button down, plug the power back "
-            "in, and keep holding until the console responds."
+            "in, and release it when the STAT LED goes out (about 5 seconds)."
         ),
         reason=(
             "the bootloader is only reachable through this sequence on this "
@@ -144,7 +162,7 @@ def catalyst_mode_button() -> HumanStep:
         timeout=180.0,
         recovery_hint=(
             "If the switch booted normally, the button was released too early. "
-            "Power off and try again, holding until the console reacts."
+            "Power off and try again, holding until the STAT LED goes out."
         ),
         wrong_state_hints=(
             (

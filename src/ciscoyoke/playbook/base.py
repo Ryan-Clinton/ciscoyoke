@@ -97,6 +97,20 @@ class Step:
     precondition to accept states it would answer wrongly.
     """
 
+    verify: Callable[[str], str | None] | None = None
+    """Check the output the step produced, not just the prompt it ended at.
+
+    Given everything the device said after the action; returns a reason to
+    fail, or ``None``. A bootloader answers a failed ``rename`` with the same
+    ``switch:`` prompt as a successful one, so reaching the expected state
+    proves the device replied, not that it did what was asked.
+    """
+
+    refuse: tuple[tuple[State, str], ...] = ()
+    """States that mean the step went wrong in a known way, each with the
+    explanation. Watched for alongside ``expect`` so a known failure is named
+    at once rather than discovered as a timeout."""
+
     requires_fresh_evidence: bool = True
     """Whether reaching ``expect`` must be proven by output arriving *after*
     the action.
@@ -322,14 +336,30 @@ def _run(step: Step, session: Session) -> None:
     Marking the stream position first and requiring the conclusion to rest on
     bytes arriving after it closes that.
     """
-    mark = len(session.tracker.buffer) if step.requires_fresh_evidence else None
+    start = len(session.tracker.buffer)
+    mark = start if step.requires_fresh_evidence else None
+    refused = dict(step.refuse)
 
     step.action(session)
 
     try:
-        session.wait_for(step.expect, timeout=step.timeout, after_offset=mark)
+        session.wait_for(
+            (*step.expect, *refused), timeout=step.timeout, after_offset=mark
+        )
     except SessionTimeoutError as exc:
         raise StepFailedError(step, session.state.state, str(exc)) from exc
+
+    reached = session.state.state
+    if reached in refused:
+        raise StepFailedError(step, reached, refused[reached])
+
+    if step.verify is not None:
+        # Reaching the prompt can precede the last of the output by a read;
+        # let the device finish before judging what it said.
+        session.settle()
+        problem = step.verify(session.tracker.buffer.text[start:])
+        if problem:
+            raise StepFailedError(step, session.state.state, problem)
 
 
 def send_line(text: bytes) -> Action:

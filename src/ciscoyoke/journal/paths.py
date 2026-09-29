@@ -56,6 +56,18 @@ def journal_db() -> Path:
     return ensure_state_dir() / "state.db"
 
 
+def transcripts_dir() -> Path:
+    """Raw recordings of runs that changed a device. Private, never published.
+
+    Kept beside the journal rather than in it (see above), but in the same
+    owner-only directory: a raw transcript can hold a previous owner's
+    configuration, and ``ciscoyoke transcript scrub`` is the only way out.
+    """
+    directory = ensure_state_dir() / "transcripts"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
 def locks_dir() -> Path:
     directory = ensure_state_dir() / "locks"
     directory.mkdir(parents=True, exist_ok=True)
