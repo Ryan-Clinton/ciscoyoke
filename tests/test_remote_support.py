@@ -20,6 +20,7 @@ from ciscoyoke.platform_profiles import (
     CATALYST_2950,
     CATALYST_2960,
     CATALYST_2960_STACKABLE,
+    CATALYST_3560,
     GENERIC_CATALYST,
     Evidence,
     catalyst_profile,
@@ -51,7 +52,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
         ("WS-C2960X-24TS-L", CATALYST_2960_STACKABLE),
         ("WS-C2960S-48LPS-L", CATALYST_2960_STACKABLE),
         ("WS-C2960+24TC-L", CATALYST_2960_STACKABLE),
-        ("WS-C3560-24PS-S", GENERIC_CATALYST),
+        ("WS-C3560-24PS-S", CATALYST_3560),
         (None, GENERIC_CATALYST),
     ],
 )
@@ -62,7 +63,17 @@ def test_models_map_to_the_right_profile(model: str | None, expected: object) ->
 def test_only_the_2950_claims_hardware_evidence() -> None:
     assert CATALYST_2950.evidence is Evidence.HARDWARE
     assert CATALYST_2960.evidence is Evidence.DOCUMENTATION
+    assert CATALYST_3560.evidence is Evidence.DOCUMENTATION
     assert (FIXTURES.parent.parent / CATALYST_2950.source).exists()
+
+
+def test_the_3560_uses_its_documented_mode_release_and_helper() -> None:
+    step = human.catalyst_mode_button(CATALYST_3560)
+    assert "System LED" in step.instruction
+    assert "amber" in step.instruction
+    assert "solid green" in step.instruction
+    assert CATALYST_3560.load_helper is True
+    assert "cisco.com" in CATALYST_3560.source
 
 
 def test_the_2960_is_told_to_watch_syst_not_stat() -> None:
