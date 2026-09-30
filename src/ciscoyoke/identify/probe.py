@@ -139,6 +139,10 @@ def _note_for(state: State) -> str:
         State.ROMMON: "device is in ROMMON; no IOS booted",
         State.BOOTLOADER: "bootloader reached; no IOS booted",
         State.BOOTING: "device is still booting",
+        State.SELF_TEST_FAILURE: (
+            "device fails its own power-on self-test; this is a hardware fault, "
+            "not a cable or baud-rate problem"
+        ),
         State.SETUP_DIALOG: "device is offering the initial configuration dialog",
         State.PRESS_RETURN: "device is booted and waiting for a carriage return",
         State.PAGER: "device is holding a pager prompt",
