@@ -40,6 +40,36 @@ green, not the 2950's "when STAT goes out", and the 2960-S/X/Plus skips
 `load_helper`, which its bootloader doesn't have. The tool shows how well it
 knows your switch before anything runs.
 
+## Console cables
+
+For the usual Cisco RJ-45 console port, prefer a USB-to-RJ45 rollover cable built
+around an FTDI USB-serial adapter **that reports a USB serial number**. ciscoyoke
+can then recognise the same physical cable after it is moved to another USB
+socket instead of relying on an operating-system port name such as `COM3` or
+`/dev/ttyUSB0`.
+
+A few common alternatives need more care:
+
+- **Prolific PL2303 cables:** many clone or older chips are refused by current
+  Windows drivers with Device Manager **Code 10** / “PL2303HXA phased out”.
+  A port can appear present while the console still produces no useful traffic,
+  so suspect the cable before blaming baud rate or the switch.
+- **CH340 cables:** they can work, but commonly expose no USB serial number.
+  ciscoyoke therefore has to identify them by physical USB topology; moving the
+  cable to another socket can change its identity.
+- **DB9 rollover cable + USB-serial adapter:** this is fine when the USB adapter
+  is reliable. The same identity rule applies: an adapter with a stable USB
+  serial number is easier to recognise safely across reconnects.
+- **Catalyst 2960-S / 2960-X USB console:** these models also provide Cisco's
+  mini-B USB console interface. Windows needs Cisco's USB console driver. When
+  that USB console is connected, the switch's RJ-45 console port is disabled,
+  so do not troubleshoot the RJ-45 side as if both ports were active together.
+
+Run `ciscoyoke doctor` before a recovery. It reports known adapter caveats from
+the USB descriptor, but it cannot prove that a particular cable is electrically
+sound or genuine. If the console remains silent, swap in a known-good cable
+before changing recovery steps.
+
 ## Testing one you own
 
 1. `ciscoyoke doctor`: the cable and adapter. Prolific clones are the usual
