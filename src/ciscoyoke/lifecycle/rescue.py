@@ -44,6 +44,9 @@ class Recommendation(StrEnum):
     CHECK_CABLE = "check_cable"
     """No signal at all."""
 
+    HARDWARE_FAULT = "hardware_fault"
+    """The device reports that its own power-on self-test failed."""
+
     STOP = "stop"
     """Continuing would destroy something. Explicitly refuses to recommend."""
 
@@ -58,6 +61,9 @@ _ADVICE: dict[Recommendation, str] = {
     # first, then check the host side. (This once suggested `doctor --port`,
     # an option that never existed -- tests now parse every advised command.)
     Recommendation.CHECK_CABLE: "ciscoyoke sweep {target}   then: ciscoyoke doctor",
+    Recommendation.HARDWARE_FAULT: (
+        "Hardware fault: stop automated recovery and inspect or repair the device."
+    ),
     Recommendation.STOP: "Stopping: see the warning above before continuing.",
 }
 
@@ -77,6 +83,7 @@ _NEXT_FROM_STATE: dict[State, str] = {
     State.BOOTLOADER: "rescue",
     State.ROMMON: "rescue",
     State.BOOTING: "wait, rescan",
+    State.SELF_TEST_FAILURE: "hardware fault",
     State.DESTRUCTIVE_RECOVERY_GUARD: "stop: recovery disabled",
     State.UNKNOWN: "sweep",
     State.SILENT: "sweep",
@@ -186,6 +193,14 @@ def _recommend(found: Intake, health: HealthReport) -> tuple[Recommendation, str
             "This device has password recovery disabled. Interrupting its boot "
             "would destroy the startup configuration, and the archive above "
             "shows what could not be read first.",
+        )
+
+    if state is State.SELF_TEST_FAILURE:
+        return (
+            Recommendation.HARDWARE_FAULT,
+            "The console is carrying readable boot output, but the device reports "
+            "that its own power-on memory/self-test failed. Treat this as a "
+            "hardware fault, not a cable, power, or baud-rate problem.",
         )
 
     if state in (State.SILENT, State.UNKNOWN):

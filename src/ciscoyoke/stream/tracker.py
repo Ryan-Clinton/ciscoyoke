@@ -34,6 +34,8 @@ class State(StrEnum):
     UNKNOWN = "unknown"
     SILENT = "silent"
     BOOTING = "booting"
+    SELF_TEST_FAILURE = "self_test_failure"
+    """The device reports a fatal POST or memory self-test failure."""
     ROMMON = "rommon"
     BOOTLOADER = "bootloader"
     SETUP_DIALOG = "setup_dialog"
@@ -226,6 +228,15 @@ class StateTracker:
                 Basis.OBSERVED,
                 Confidence.HIGH,
                 self._guard_evidence,
+            )
+
+        self_test_failure = by_kind.get(SignalKind.SELF_TEST_FAILURE)
+        if self_test_failure is not None:
+            return Observation(
+                State.SELF_TEST_FAILURE,
+                Basis.OBSERVED,
+                Confidence.HIGH,
+                (self_test_failure,),
             )
 
         anchored = first_anchored(signals)

@@ -39,6 +39,7 @@ class SignalKind(StrEnum):
     CONFIRM_PROMPT = "confirm_prompt"
     SAVE_CONFIG_PROMPT = "save_config_prompt"
     FILENAME_PROMPT = "filename_prompt"
+    SELF_TEST_FAILURE = "self_test_failure"
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +178,15 @@ _UNANCHORED: tuple[tuple[SignalKind, re.Pattern[str], str], ...] = (
         SignalKind.BAD_PASSWORD,
         re.compile(r"(% Bad (?:secrets|passwords)|% Login invalid)", re.IGNORECASE),
         "error_message",
+    ),
+    (
+        SignalKind.SELF_TEST_FAILURE,
+        re.compile(
+            r"((?:DDR\s+)?memory test failed|Bad RAM at location|"
+            r"Failed all 0x[0-9A-Fa-f]+ test)",
+            re.IGNORECASE,
+        ),
+        "hardware_self_test",
     ),
     (
         SignalKind.BOOT_ACTIVITY,
