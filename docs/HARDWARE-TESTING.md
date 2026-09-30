@@ -18,7 +18,8 @@ Catalyst" claims mean "I saw a command in a manual that probably works".
 | Catalyst 2950 | ● [cold boot](../tests/fixtures/hw-switch-2950-cold-boot-locked.ytx.pub) | ● [no-restore](../tests/fixtures/hw-switch-2950-recover-no-restore.ytx.pub) | — | — ¹ |
 | Catalyst 2960 | ○ | ○ | — | ○ |
 | Catalyst 2960-S / X / Plus | ○ | ○ | — | ○ |
-| Catalyst 3550 / 3560 / 3750 | — | — ² | — | — ² |
+| Catalyst 3550 / 3750 | — | — ² | — | — ² |
+| Catalyst 3560 | ○ | ○ | — | ○ |
 | Cisco 1760 | — | — | — | — |
 | Cisco 1800 / 1841 | — | — | — | — |
 
@@ -28,7 +29,9 @@ configuration is not ours to publish. The mark waits for a reset recorded
 against a lab-only configuration.
 
 ² No model-specific profile: these get Cisco's general procedure with longer
-waits, and destructive commands ask for `--accept-unverified`.
+waits, and destructive commands ask for `--accept-unverified`. Catalyst 3560
+now has a documentation-derived profile from Cisco's published recovery guide,
+but it remains unverified on hardware.
 
 ## Where the ○ rows come from
 
