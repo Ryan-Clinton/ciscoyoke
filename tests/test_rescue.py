@@ -14,7 +14,7 @@ from ciscoyoke.lifecycle.rescue import Recommendation, rescue
 from ciscoyoke.session import Session
 from ciscoyoke.stream.tracker import State
 from ciscoyoke.transcript.fake import FakeDevice, FakeTransport
-from ciscoyoke.transcript.schema import read
+from ciscoyoke.transcript.schema import Direction, Record, Transcript, read
 from ciscoyoke.transport.base import TransportCapabilities
 from ciscoyoke.transport.rfc2217 import RemoteTransport, RemoteUnavailableError
 
@@ -34,6 +34,40 @@ def session_for(name: str) -> Session:
 def test_rescue_changes_nothing_destructive() -> None:
     report = rescue(session_for("router-1760-intake.ytx.pub"), "COM3")
     assert "Nothing destructive has happened." in report.render()
+
+
+def self_test_failure_session() -> Session:
+    output = (
+        b"System Bootstrap, Version 12.3(8r)YH6, RELEASE SOFTWARE (fc1)\r\n"
+        b"Failed all 0x00000000 test\r\n"
+        b"Bad RAM at location 0x80000000: wrote 0x00000000, read 0xFFFF0000\r\n"
+        b"DDR memory test failed.  Resetting the router ...\r\n"
+    )
+    device = FakeDevice(
+        Transcript(records=(Record(0.0, Direction.RX, output),)),
+        strict=False,
+    )
+    return Session(
+        FakeTransport(device),
+        clock=device.monotonic,
+        sleep=device.sleeper(),
+    )
+
+
+def test_self_test_failure_is_reported_as_hardware_fault_not_cable() -> None:
+    found = intake(self_test_failure_session())
+    assert found.observation.state is State.SELF_TEST_FAILURE
+    assert "hardware fault" in found.note
+    assert "cable" in found.note  # explicitly says this is not a cable problem
+
+    report = rescue(self_test_failure_session(), "COM8")
+    assert report.recommendation is Recommendation.HARDWARE_FAULT
+    assert "hardware fault" in report.reason
+    assert "not a cable" in report.reason
+    assert "Hardware fault" in report.next_command
+
+    memory = next(c for c in report.health.checks if c.name == "memory")
+    assert memory.health is Health.FAULTY
 
 
 def test_a_bootloader_recommends_image_rescue() -> None:
