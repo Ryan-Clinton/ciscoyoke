@@ -38,8 +38,9 @@ def _intake_one(port: str, baud: int) -> Intake:
 
 
 def cmd_intake(args: argparse.Namespace) -> int:
+    port = target(args.port)
     try:
-        result = _intake_one(args.port, args.baud)
+        result = _intake_one(port, args.baud)
     except SerialUnavailableError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return int(ExitCode.DEVICE_NOT_FOUND)
@@ -66,7 +67,7 @@ def cmd_intake(args: argparse.Namespace) -> int:
         code = ExitCode.STATE_UNCERTAIN
 
     payload = dict(result.to_json())
-    payload["port"] = args.port
+    payload["port"] = port
     payload["baud"] = args.baud
     return emit_result(Result("intake", int(code), payload), args.json, "\n".join(lines))
 

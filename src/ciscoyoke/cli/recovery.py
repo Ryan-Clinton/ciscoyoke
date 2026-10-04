@@ -20,7 +20,7 @@ from ciscoyoke.transport.serial_ import DEFAULT_BAUD
 
 def cmd_rescue(args: argparse.Namespace) -> int:
     def run() -> int:
-        report = commands.do_rescue(args.port, args.baud)
+        report = commands.do_rescue(target(args.port), args.baud)
         return emit_result(
             Result("rescue", int(ExitCode.SUCCESS), report.to_json()),
             args.json,
@@ -32,7 +32,7 @@ def cmd_rescue(args: argparse.Namespace) -> int:
 
 def cmd_health(args: argparse.Namespace) -> int:
     def run() -> int:
-        payload, code = commands.do_health(args.port, args.baud)
+        payload, code = commands.do_health(target(args.port), args.baud)
         lines = [f"Overall health: {payload.get('overall')}"]
         checks = payload.get("checks")
         if isinstance(checks, list):
@@ -50,7 +50,7 @@ def cmd_health(args: argparse.Namespace) -> int:
 def cmd_archive(args: argparse.Namespace) -> int:
     def run() -> int:
         outcome = commands.do_archive(
-            args.port, Path(args.output) if args.output else None, args.baud
+            target(args.port), Path(args.output) if args.output else None, args.baud
         )
         human = outcome.rendered
         if outcome.directory:
@@ -75,7 +75,7 @@ def cmd_archive(args: argparse.Namespace) -> int:
 def cmd_reset(args: argparse.Namespace) -> int:
     def run() -> int:
         rendered, code = commands.do_reset(
-            args.port,
+            target(args.port),
             baud=args.baud,
             confirm=args.confirm,
             accept_config_loss=args.accept_config_loss,
