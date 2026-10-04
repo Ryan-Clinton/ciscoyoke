@@ -140,7 +140,8 @@ Support is claimed only when it's earned, and every mark says how:
 | Catalyst 2950 | ● | ● | ● ¹ | more variants |
 | Catalyst 2960 | ○ | ○ | ○ | **a tester** |
 | Catalyst 2960-S / X / Plus | ○ | ○ | ○ | **a tester** (USB console too) |
-| Catalyst 3550 / 3560 / 3750 | — | — | — | **a tester**, or a profile from Cisco's docs ² |
+| Catalyst 3560 / 3560G / 3560V2 | ○ | ○ | ○ | **a tester** |
+| Catalyst 3550 / 3750 / 3560-X / 3560-CX | — | — | — | **a tester**, or a profile from Cisco's docs ² |
 | Cisco 1700 / 1800 / 1841 routers | — | — | — | **a tester** |
 
 ¹ Recorded against a made-up lab configuration; an earlier run that held a
