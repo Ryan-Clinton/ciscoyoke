@@ -23,7 +23,7 @@ Setup and the one command that says a change is ready are in
 | Reading model, version, serial from console text | `identify/facts.py`, `identify/probe.py` | `test_intake_replay.py` |
 | Serial, USB adapter identity, port labels | `transport/` | `test_transport.py` |
 | The expect/send loop, deadlines, pager handling | `session.py` | `test_intake_replay.py`, `test_playbook.py` |
-| Passive recording (`capture`, `sweep`, `console`) | `capture.py` (the listener), `capturing.py` (the commands) | `test_capture.py` |
+| Passive recording (`capture`, `sweep`, `console`) | `capture/listen.py` (the passive listener), `capture/commands.py` (the three commands) | `test_capture.py` |
 | Transcript format, recording, scrubbing, replay | `transcript/` | `test_transcript.py`, `test_scrub.py`, `test_hardware_fixtures.py` |
 | What is journalled, leases, resuming an interrupted run | `journal/`, `support.py` | `test_journal.py`, `test_lease.py` |
 | Exit codes, the `--json` result shape | `result/` | `test_cli.py` |
@@ -56,7 +56,7 @@ itself in a `do_*()` function.
 | `recover image` | `cli/image.py` | `image/recover.py` |
 | `lab verify`, `lab apply` | `cli/lab.py` | `labs.py` |
 | `transcript scrub`, `transcript replay` | `cli/transcript.py` | `transcript/scrub.py`, `transcript/replay.py` |
-| `console`, `capture`, `sweep` | `cli/capture.py` | `capturing.py` |
+| `console`, `capture`, `sweep` | `cli/capture.py` | `capture/commands.py` |
 | `support-bundle`, `report` | `cli/support.py` | `support.py`, `report.py` |
 
 `cli/parser.py` assembles them, in the order `ciscoyoke --help` lists them.
@@ -75,7 +75,8 @@ cli/                       argparse only: turn a command line into one call
         ▼
 commands.py, labs.py,      one do_*() per command: take the lease, open the
 interactive.py,            journal, call the layers below, return text + exit code
-support.py, capturing.py,
+support.py,
+capture/commands.py,
 image/recover.py
         │
         ├── identify/      what is this device?
@@ -129,7 +130,8 @@ small pull request at a time, never as one large move:
 
 - Done: `cli.py` + `cli_extra.py` became the `cli/` package.
 - Done: `imaging.py` became `image/recover.py`.
-- `capture.py` + `capturing.py` become a `capture/` package.
+- Done: `capture.py` + `capturing.py` became `capture/listen.py` and
+  `capture/commands.py`.
 - Later: `lifecycle/` and the top-level command modules settle into clearer
   neighbourhoods as they are next touched.
 

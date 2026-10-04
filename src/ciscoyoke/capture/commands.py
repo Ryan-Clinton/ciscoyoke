@@ -20,7 +20,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from ciscoyoke.capture import (
+from ciscoyoke.capture.listen import (
     DEFAULT_QUIET_AFTER,
     BaudProbe,
     CaptureStats,

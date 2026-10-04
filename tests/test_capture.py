@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ciscoyoke.capture import BaudProbe, best_baud, capture
+from ciscoyoke.capture.listen import BaudProbe, best_baud, capture
 from ciscoyoke.stream.tracker import State, StateTracker
 from ciscoyoke.transcript.schema import TranscriptFormatError, read
 from ciscoyoke.transcript.writer import TranscriptWriter
