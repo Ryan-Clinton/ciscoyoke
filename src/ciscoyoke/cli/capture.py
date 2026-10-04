@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ciscoyoke import capturing
+from ciscoyoke.capture.commands import do_capture, do_console, do_sweep
 from ciscoyoke.cli.common import Subparsers, emit_result, guard, target
 from ciscoyoke.result.schema import Result
 from ciscoyoke.transport.serial_ import DEFAULT_BAUD
@@ -13,7 +13,7 @@ from ciscoyoke.transport.serial_ import DEFAULT_BAUD
 
 def cmd_console(args: argparse.Namespace) -> int:
     def run() -> int:
-        return capturing.do_console(
+        return do_console(
             target(args.port),
             args.baud,
             Path(args.record) if args.record else None,
@@ -26,7 +26,7 @@ def cmd_capture(args: argparse.Namespace) -> int:
     """Listen and record. The safest thing to point at unknown hardware."""
 
     def run() -> int:
-        rendered, payload, code = capturing.do_capture(
+        rendered, payload, code = do_capture(
             target(args.port),
             Path(args.output),
             baud=args.baud,
@@ -43,7 +43,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     """Find the line speed by listening at each candidate rate."""
 
     def run() -> int:
-        rendered, payload, code = capturing.do_sweep(
+        rendered, payload, code = do_sweep(
             target(args.port), seconds=args.seconds
         )
         return emit_result(Result("sweep", int(code), payload), args.json, rendered)

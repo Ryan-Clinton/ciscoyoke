@@ -37,6 +37,8 @@ the format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   bind UDP/69. Found by the new pipx install check on a macOS runner.
 
 ### Changed
+- Internal: `capture.py` and `capturing.py` are now `capture/listen.py` and
+  `capture/commands.py`.
 - Internal: `imaging.py` is now `image/recover.py`, with the rest of image
   rescue.
 - Internal: `cli.py` and `cli_extra.py` are now a `cli/` package with one module
