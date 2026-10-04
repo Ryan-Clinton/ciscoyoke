@@ -155,3 +155,25 @@ def test_buffer_decodes_high_bytes_without_raising() -> None:
     buffer = StreamBuffer()
     buffer.feed(b"\xff\xfe garbage \x00")
     assert len(buffer.text) == len(buffer.raw)
+
+
+@pytest.mark.parametrize(
+    ("suffix", "expected"),
+    [
+        (b"System Bootstrap, Version 12.3\r\n\r\nrommon 1 > ", State.ROMMON),
+        (b"\r\nRouter>", State.USER_EXEC),
+        (b"\r\nRouter#show log\r\n%SYS-3: memory test failed on slot 1\r\nRouter#", State.PRIV_EXEC),
+    ],
+)
+def test_prompt_outranks_prior_self_test_failure(suffix: bytes, expected: State) -> None:
+    """A live anchored prompt is stronger evidence than earlier boot/log text."""
+    failure = (
+        b"Failed all 0x00000000 test\r\n"
+        b"Bad RAM at location 0x80000000\r\n"
+        b"DDR memory test failed. Resetting the router ...\r\n"
+    )
+    tracker = StateTracker()
+    tracker.feed(failure + suffix)
+    assert tracker.current.state is expected
+    assert tracker.current.basis is Basis.OBSERVED
+    assert tracker.current.confidence is Confidence.HIGH
