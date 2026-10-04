@@ -79,6 +79,32 @@ def test_doctor_never_recommends_running_elevated(
         assert phrase not in output, f"doctor recommended elevation: {phrase!r}"
 
 
+@pytest.mark.parametrize(("platform", "offered"), [("linux", True), ("darwin", False)])
+def test_doctor_offers_the_linux_capability_only_on_linux(
+    platform: str,
+    offered: bool,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Seen on a macOS runner: advice to grant a capability macOS lacks."""
+    from ciscoyoke import doctor
+
+    # Diagnosed on the real platform first: only the rendering is under test.
+    diagnosis = doctor.run()
+    monkeypatch.setattr(doctor, "run", lambda: diagnosis)
+    monkeypatch.setattr(
+        type(diagnosis), "embedded_tftp_available", property(lambda self: False)
+    )
+    monkeypatch.setattr("sys.platform", platform)
+
+    main(["doctor"])
+    output = capsys.readouterr().out
+
+    assert "Embedded TFTP unavailable." in output
+    assert ("bind-service capability" in output) is offered
+    assert "--via xmodem" in output
+
+
 def test_doctor_steers_away_from_elevation_where_it_mentions_it() -> None:
     """Wherever elevation is named, it is named as the wrong answer."""
     from ciscoyoke.doctor import check_port_permissions

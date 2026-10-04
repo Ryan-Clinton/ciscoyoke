@@ -62,7 +62,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "Embedded TFTP unavailable.",
             "",
             "Options:",
-            "  - grant bind-service capability to an approved helper",
+            # A Linux capability. On a Mac runner this line was advice for a
+            # mechanism macOS does not have.
+            *(
+                ["  - grant bind-service capability to an approved helper"]
+                if sys.platform.startswith("linux")
+                else []
+            ),
             "  - use an external TFTP server   --tftp external://HOST",
             "  - use XMODEM where supported    --via xmodem",
         ]
