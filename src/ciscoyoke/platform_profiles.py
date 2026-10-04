@@ -41,6 +41,11 @@ _2960S_BOOTLOADER = (
     "release/15-2_2_e/command/reference/cr_2960/bootldr.html"
 )
 
+_3560_GUIDE = (
+    "https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst3560/software/"
+    "release/15-0_2_se/configuration/guide/scg3560/swtrbl.html"
+)
+
 _USB_CONSOLE = (
     "The front panel also has a USB mini-B console port. On Windows it needs "
     "Cisco's USB console driver (it appears as USB VID 05A6 PID 0009); macOS and "
@@ -130,6 +135,18 @@ CATALYST_2960 = CatalystProfile(
     boot_timeout=420.0,
 )
 
+CATALYST_3560 = CatalystProfile(
+    family="3560",
+    prefixes=("WS-C3560-", "WS-C3560G", "WS-C3560V2"),
+    mode_release=(
+        "continue holding until the System LED turns briefly amber and then "
+        "solid green, then release it"
+    ),
+    load_helper=True,
+    evidence=Evidence.DOCUMENTATION,
+    source=_3560_GUIDE,
+)
+
 CATALYST_2960_STACKABLE = CatalystProfile(
     family="2960-S/X/Plus",
     prefixes=("WS-C2960S", "WS-C2960X", "WS-C2960XR", "WS-C2960+", "WS-C2960C"),
@@ -162,6 +179,7 @@ PROFILES: tuple[CatalystProfile, ...] = (
     CATALYST_2950,
     CATALYST_2960_STACKABLE,
     CATALYST_2960,
+    CATALYST_3560,
 )
 
 
