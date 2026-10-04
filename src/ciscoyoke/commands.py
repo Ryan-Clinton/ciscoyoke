@@ -44,8 +44,8 @@ from ciscoyoke.platform_profiles import (
 from ciscoyoke.playbook import ios_switch
 from ciscoyoke.playbook.base import PlanRefusedError, StepFailedError, execute, plan
 from ciscoyoke.result.exits import ExitCode
-from ciscoyoke.session import Session
-from ciscoyoke.stream.tracker import Basis
+from ciscoyoke.session import Session, SessionTimeoutError
+from ciscoyoke.stream.tracker import Basis, State
 from ciscoyoke.transcript.schema import write as write_transcript
 from ciscoyoke.transport.identity import PortIdentity, enumerate_ports
 from ciscoyoke.transport.serial_ import (
@@ -292,6 +292,62 @@ def _switch_cleanup(
     return replace(bundle, artifacts=(*bundle.artifacts, boot, *preserved)), cleanup
 
 
+#: An unconfigured device that has simply not been taken to a privileged prompt
+#: yet: fresh from the box, or just reset.
+_BEFORE_PRIVILEGED = (
+    State.SETUP_DIALOG,
+    State.AUTOINSTALL,
+    State.PRESS_RETURN,
+    State.USER_EXEC,
+)
+
+
+def reach_privileged(session: Session) -> bool:
+    """Take an open, unlocked console to the privileged prompt.
+
+    A real 2950 sat at the setup dialog after a reset, and `reset` refused it
+    for not being at ``Switch#`` -- although its own plan ends by answering that
+    same dialog. Nothing here changes the device: declining the dialog writes no
+    configuration, and ``enable`` lasts only as long as the session.
+
+    Returns whether anything was sent. A device that asks for a password is
+    left to `recover access`: this never guesses a credential.
+    """
+    if session.state.state not in _BEFORE_PRIVILEGED:
+        return False
+
+    def answer(line: bytes, wanted: tuple[State, ...]) -> None:
+        offset = len(session.tracker.buffer)
+        session.send(line)
+        try:
+            session.wait_for(wanted, timeout=60.0, after_offset=offset)
+        except SessionTimeoutError as exc:
+            raise CommandError(
+                f"could not reach a privileged prompt: {exc}", ExitCode.STATE_UNCERTAIN
+            ) from exc
+
+    locked = (State.LOGIN_USERNAME, State.LOGIN_PASSWORD, State.ENABLE_PASSWORD)
+    prompt = (State.USER_EXEC, State.PRIV_EXEC, *locked)
+    if session.state.state is State.SETUP_DIALOG:
+        answer(b"no\r", (State.AUTOINSTALL, State.PRESS_RETURN, *prompt))
+    if session.state.state is State.AUTOINSTALL:
+        answer(b"yes\r", (State.PRESS_RETURN, *prompt))
+    if session.state.state is State.PRESS_RETURN:
+        answer(b"\r", prompt)
+    if session.state.state is State.USER_EXEC:
+        answer(b"enable\r", (State.PRIV_EXEC, *locked))
+    session.settle()
+
+    if session.state.state in locked:
+        raise CommandError(
+            "the device asks for a password before its privileged prompt. "
+            "Recover access first (ciscoyoke recover access PORT --no-restore), "
+            "then reset.",
+            ExitCode.AUTHENTICATION_REQUIRED,
+        )
+    return True
+
+
 # -- destructive commands --------------------------------------------------
 
 
@@ -321,6 +377,10 @@ def do_reset(
         recorded(session, "reset") as transcript,
     ):
         found = intake(session)
+        if reach_privileged(session):
+            # Read again: the first look was from a prompt that cannot show a
+            # configuration or list flash.
+            found = intake(session)
         note_identity(port, found.facts, "intake")
         bundle = archive(session, found)
 
@@ -378,7 +438,7 @@ def do_reset(
             raise CommandError(f"{rendered}\n\n{gate}", ExitCode.STATE_UNCERTAIN)
         if not confirm:
             return (
-                f"{rendered}\n\nDry run. Nothing was sent. "
+                f"{rendered}\n\nDry run. Nothing destructive was sent. "
                 f"Re-run with --confirm to proceed.",
                 ExitCode.SUCCESS,
             )

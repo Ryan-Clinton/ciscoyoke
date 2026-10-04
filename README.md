@@ -137,14 +137,14 @@ Support is claimed only when it's earned, and every mark says how:
 
 | Device | Identify | Password recovery | Reset | We need |
 | --- | --- | --- | --- | --- |
-| Catalyst 2950 | ● | ● | — ¹ | more variants |
+| Catalyst 2950 | ● | ● | ● ¹ | more variants |
 | Catalyst 2960 | ○ | ○ | ○ | **a tester** |
 | Catalyst 2960-S / X / Plus | ○ | ○ | ○ | **a tester** (USB console too) |
 | Catalyst 3550 / 3560 / 3750 | — | — | — | **a tester**, or a profile from Cisco's docs ² |
 | Cisco 1700 / 1800 / 1841 routers | — | — | — | **a tester** |
 
-¹ Reset has run end to end on the 2950, but its only recording held a previous
-owner's configuration, so it isn't published and the mark isn't claimed.
+¹ Recorded against a made-up lab configuration; an earlier run that held a
+previous owner's configuration was never published.
 ² No model-specific profile yet: these get Cisco's general procedure with
 longer waits, and destructive commands ask for `--accept-unverified`.
 Per-mark evidence: [docs/HARDWARE-TESTING.md](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/HARDWARE-TESTING.md).
