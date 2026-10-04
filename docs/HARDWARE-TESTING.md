@@ -29,9 +29,7 @@ configuration is not ours to publish. The mark waits for a reset recorded
 against a lab-only configuration.
 
 ² No model-specific profile: these get Cisco's general procedure with longer
-waits, and destructive commands ask for `--accept-unverified`. Catalyst 3560
-now has a documentation-derived profile from Cisco's published recovery guide,
-but it remains unverified on hardware.
+waits, and destructive commands ask for `--accept-unverified`.
 
 ## Where the ○ rows come from
 
