@@ -63,6 +63,7 @@ only-include = [
     "src",
     "tests",
     "docs/ARCHITECTURE.md",
+    "docs/DEVELOPMENT.md",
     "docs/HARDWARE-TESTING.md",
     "docs/SAFETY.md",
     "docs/SPEC.md",
@@ -70,6 +71,7 @@ only-include = [
     "README.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
+    "SECURITY.md",
     "LICENSE",
     "pyproject.toml",
 ]
