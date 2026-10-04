@@ -8,6 +8,14 @@ the format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - A fourth hardware recording: `reset` erasing a lab-only configuration on the
   WS-C2950G-24-EI, which earns the 2950 its reset mark.
+- A documentation-derived profile for the Catalyst 3560, 3560G and 3560V2,
+  from Cisco's recovery guide. The 3560-X and 3560-CX stay on the generic
+  procedure: the CX releases Mode on a different LED cue. (#11, @soyeladice-svg)
+- A device stuck in a power-on self-test failure loop is now recognised as a
+  hardware fault: `intake` and `scan` say so, and `rescue` recommends stopping
+  rather than checking the cable. A live prompt always outranks earlier
+  failure text. (#12, @soyeladice-svg)
+- Docs: which USB console cables work, and which to avoid. (#10, @soyeladice-svg)
 
 ### Fixed (found on the bench 2950 while recording that reset)
 - The scrubber left the chassis MAC in `snmp-server engineID local ...`, where

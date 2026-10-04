@@ -18,8 +18,8 @@ Catalyst" claims mean "I saw a command in a manual that probably works".
 | Catalyst 2950 | ● [cold boot](../tests/fixtures/hw-switch-2950-cold-boot-locked.ytx.pub) | ● [no-restore](../tests/fixtures/hw-switch-2950-recover-no-restore.ytx.pub) | — | ● [lab config](../tests/fixtures/hw-switch-2950-reset-lab-config.ytx.pub) ¹ |
 | Catalyst 2960 | ○ | ○ | — | ○ |
 | Catalyst 2960-S / X / Plus | ○ | ○ | — | ○ |
-| Catalyst 3550 / 3750 | — | — ² | — | — ² |
-| Catalyst 3560 | ○ | ○ | — | ○ |
+| Catalyst 3560 / 3560G / 3560V2 | ○ | ○ | — | ○ |
+| Catalyst 3550 / 3750 / 3560-X / 3560-CX | — | — ² | — | — ² |
 | Cisco 1760 | — | — | — | — |
 | Cisco 1800 / 1841 | — | — | — | — |
 
