@@ -127,6 +127,50 @@ def test_ports_reports_absence_as_a_result_not_a_crash(
     assert "ports" in payload
 
 
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["rescue", "bench-left"],
+        ["health", "bench-left"],
+        ["archive", "bench-left"],
+        ["reset", "bench-left"],
+        ["intake", "bench-left"],
+    ],
+)
+def test_a_label_is_accepted_wherever_a_port_is(
+    argv: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`rescue bench-left` is the reason labels exist.
+
+    Only the later commands resolved a label; the five here passed the label
+    itself to the serial layer, which reported that no such port existed.
+    """
+    from ciscoyoke import commands
+    from ciscoyoke.cli import identify
+    from ciscoyoke.transport import labels
+
+    monkeypatch.setattr(
+        labels, "resolve_target", lambda value: "COM9" if value == "bench-left" else value
+    )
+    opened: list[str] = []
+
+    def stop(port: str, *args: object, **kwargs: object) -> None:
+        opened.append(port)
+        raise commands.CommandError("stopped by the test", ExitCode.DEVICE_NOT_FOUND)
+
+    for name in ("do_rescue", "do_health", "do_archive", "do_reset"):
+        monkeypatch.setattr(commands, name, stop)
+
+    def unavailable(port: str, baud: int) -> None:
+        opened.append(port)
+        raise identify.SerialUnavailableError("stopped by the test")
+
+    monkeypatch.setattr(identify, "_intake_one", unavailable)
+
+    assert main(argv) == ExitCode.DEVICE_NOT_FOUND
+    assert opened == ["COM9"]
+
+
 def test_transcript_scrub_writes_a_public_fixture(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
