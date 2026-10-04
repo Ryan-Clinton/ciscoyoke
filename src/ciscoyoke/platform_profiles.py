@@ -137,7 +137,7 @@ CATALYST_2960 = CatalystProfile(
 
 CATALYST_3560 = CatalystProfile(
     family="3560",
-    prefixes=("WS-C3560",),
+    prefixes=("WS-C3560-", "WS-C3560G", "WS-C3560V2"),
     mode_release=(
         "continue holding until the System LED turns briefly amber and then "
         "solid green, then release it"
