@@ -27,6 +27,12 @@ the format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `rescue` had no next step for a device at the setup dialog; it now says the
   device is usable and recommends `reset` to clear what flash may still hold.
 - Refusals printed with garbled dashes on a legacy Windows console.
+- `doctor` on macOS suggested granting a Linux capability when it could not
+  bind UDP/69. Found by the new pipx install check on a macOS runner.
+
+### Changed
+- CI now builds the wheel, installs it with `pipx` on Linux, Windows and macOS,
+  and prints what the first-run commands say.
 
 ## [0.1.0a1] - 2026-09-30
 
