@@ -9,7 +9,7 @@ has to be something the device was seen to say, not something assumed.
 from __future__ import annotations
 
 from ciscoyoke.image.drivers import CatalystBootloaderDriver
-from ciscoyoke.imaging import raise_console_speed, restore_console_speed
+from ciscoyoke.image.recover import raise_console_speed, restore_console_speed
 from ciscoyoke.playbook.transfer import Method, TransferStep
 from ciscoyoke.session import Session
 from ciscoyoke.stream.tracker import State

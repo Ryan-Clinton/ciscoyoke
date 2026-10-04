@@ -6,8 +6,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from ciscoyoke import imaging
 from ciscoyoke.cli.common import Subparsers, emit_result, guard, target
+from ciscoyoke.image.recover import do_recover_image, last_result
 from ciscoyoke.playbook.transfer import Progress
 from ciscoyoke.result.schema import Result
 from ciscoyoke.transport.serial_ import DEFAULT_BAUD
@@ -26,7 +26,7 @@ def _progress_line(progress: Progress) -> None:
 def cmd_recover_image(args: argparse.Namespace) -> int:
     def run() -> int:
         reporter = None if args.quiet else _progress_line
-        rendered, code = imaging.do_recover_image(
+        rendered, code = do_recover_image(
             target(args.port),
             Path(args.image),
             baud=args.baud,
@@ -39,7 +39,7 @@ def cmd_recover_image(args: argparse.Namespace) -> int:
             print(file=sys.stderr)
 
         payload: dict[str, object] = {"confirmed": args.confirm}
-        payload.update(imaging.last_result())
+        payload.update(last_result())
         return emit_result(
             Result("recover image", int(code), payload), args.json, rendered
         )
