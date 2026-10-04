@@ -37,6 +37,11 @@ the format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   bind UDP/69. Found by the new pipx install check on a macOS runner.
 
 ### Changed
+- Internal: `cli.py` and `cli_extra.py` are now a `cli/` package with one module
+  per command group. No command, option or output changed. An error from
+  `console`, `capture`, `sweep`, `lab`, `report`, `resolve`, `login`,
+  `recover` or `ports label` now prints through the same legacy-console-safe
+  path as the others.
 - `python tools/check.py` is the one command that says a change is ready: ruff,
   mypy, the tests and the raw-recording check. CI runs the same script.
 - CI now builds the wheel, installs it with `pipx` on Linux, Windows and macOS,

@@ -263,7 +263,7 @@ ciscoyoke/
 │   ├── schema.py       versioned machine-readable results (§14.4)
 │   └── exits.py        documented exit codes (§14.5)
 ├── doctor.py           host serial/driver/permission/capability diagnostics
-└── cli.py
+└── cli/                one module per command group; parser.py assembles them
 ```
 
 **Dependencies:** `pyserial` (transport, including `socket://` and `rfc2217://`),

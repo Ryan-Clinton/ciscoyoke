@@ -10,7 +10,7 @@ Setup and the one command that says a change is ready are in
 
 | ...this | Look here | Tests |
 | --- | --- | --- |
-| A command's arguments, help text or output | `src/ciscoyoke/cli.py`, `cli_extra.py` | `test_cli.py`, `test_front_door.py` |
+| A command's arguments, help text or output | `cli/`: one module per command group (table below) | `test_cli.py`, `test_front_door.py` |
 | What a core command does (`rescue`, `health`, `archive`, `reset`) | `commands.py`, then `lifecycle/` | `test_rescue.py`, `test_archive.py`, `test_clean_reset.py` |
 | Which prompt or banner is recognised | `stream/signals.py` | `test_tracker.py`, `test_chunk_invariance.py` |
 | How observations become a device state | `stream/tracker.py` | `test_tracker.py` |
@@ -41,10 +41,36 @@ must keep: [`stream/`](../src/ciscoyoke/stream/README.md),
 [`transcript/`](../src/ciscoyoke/transcript/README.md) and
 [`image/`](../src/ciscoyoke/image/README.md).
 
+## Where each command lives
+
+Every command has two halves: its arguments and output in `cli/`, and the work
+itself in a `do_*()` function.
+
+| Command | Arguments and output | The work |
+| --- | --- | --- |
+| `doctor` | `cli/doctor.py` | `doctor.py` |
+| `ports`, `ports label`, `ports labels` | `cli/ports.py` | `transport/identity.py`, `transport/labels.py` |
+| `scan`, `intake`, `login` | `cli/identify.py` | `identify/probe.py`, `interactive.py` |
+| `rescue`, `health`, `archive`, `reset` | `cli/recovery.py` | `commands.py` |
+| `recover access`, `resolve` | `cli/recovery.py` | `interactive.py`, `support.py` |
+| `recover image` | `cli/image.py` | `imaging.py` |
+| `lab verify`, `lab apply` | `cli/lab.py` | `labs.py` |
+| `transcript scrub`, `transcript replay` | `cli/transcript.py` | `transcript/scrub.py`, `transcript/replay.py` |
+| `console`, `capture`, `sweep` | `cli/capture.py` | `capturing.py` |
+| `support-bundle`, `report` | `cli/support.py` | `support.py`, `report.py` |
+
+`cli/parser.py` assembles them, in the order `ciscoyoke --help` lists them.
+`cli/common.py` has what they share: printing a result, turning a failure into
+its exit code, and resolving a port label.
+
+To add a command: put a `cmd_*` handler and its arguments in the module for its
+group, register it there, and write the work as a `do_*()` that can be called
+and tested without argparse.
+
 ## How the layers depend on each other
 
 ```text
-cli.py / cli_extra.py      argparse only: turn a command line into one call
+cli/                       argparse only: turn a command line into one call
         │
         ▼
 commands.py, imaging.py,   one do_*() per command: take the lease, open the
@@ -88,7 +114,7 @@ Adding a Catalyst family should touch:
 3. `docs/HARDWARE-TESTING.md` and the README table: the mark it has earned.
 4. A playbook or image driver only if the procedure really differs.
 
-It should not need `cli.py`, `commands.py`, `journal/`, `result/` or
+It should not need `cli/`, `commands.py`, `journal/`, `result/` or
 `transport/`. If a change like this drags one of those in, say so in the pull
 request: that is a design problem worth fixing, not something to work around.
 
@@ -100,8 +126,7 @@ test built from the real text.
 The tree is being regrouped so one concept has one obvious home. It happens a
 small pull request at a time, never as one large move:
 
-- `cli.py` + `cli_extra.py` become a `cli/` package, one module per command
-  group.
+- Done: `cli.py` + `cli_extra.py` became the `cli/` package.
 - `imaging.py` moves into `image/`.
 - `capture.py` + `capturing.py` become a `capture/` package.
 - Later: `lifecycle/` and the top-level command modules settle into clearer

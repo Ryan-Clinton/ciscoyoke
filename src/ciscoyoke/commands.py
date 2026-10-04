@@ -1,6 +1,6 @@
 """Command implementations, kept separate from argument parsing.
 
-``cli.py`` is about turning a command line into a call; this is about doing the
+The ``cli`` package is about turning a command line into a call; this is about doing the
 work. Splitting them means every command is callable and testable without going
 through ``argparse``, which is what lets the CLI contract -- exit codes, JSON
 shape, refusal messages -- be asserted directly.
