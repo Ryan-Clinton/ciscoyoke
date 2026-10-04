@@ -230,6 +230,13 @@ class StateTracker:
                 self._guard_evidence,
             )
 
+        anchored = first_anchored(signals)
+        if anchored is not None:
+            if anchored.kind is SignalKind.PASSWORD_PROMPT:
+                return self._resolve_password(anchored)
+            state = _DIRECT[anchored.kind]
+            return Observation(state, Basis.OBSERVED, Confidence.HIGH, (anchored,))
+
         self_test_failure = by_kind.get(SignalKind.SELF_TEST_FAILURE)
         if self_test_failure is not None:
             return Observation(
@@ -238,13 +245,6 @@ class StateTracker:
                 Confidence.HIGH,
                 (self_test_failure,),
             )
-
-        anchored = first_anchored(signals)
-        if anchored is not None:
-            if anchored.kind is SignalKind.PASSWORD_PROMPT:
-                return self._resolve_password(anchored)
-            state = _DIRECT[anchored.kind]
-            return Observation(state, Basis.OBSERVED, Confidence.HIGH, (anchored,))
 
         # No prompt: the device is mid-sentence. Boot output is still a useful
         # conclusion, but it is weaker than sitting at a prompt -- output can
