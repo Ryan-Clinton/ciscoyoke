@@ -18,7 +18,7 @@ Setup and the one command that says a change is ready are in
 | Password recovery steps | `playbook/ios_switch.py`, `playbook/ios_router.py`; chosen by `lifecycle/recover.py` | `test_switch_recovery.py`, `test_playbook.py` |
 | Steps a person performs (hold Mode, power-cycle) | `playbook/human.py`, driven by `interactive.py` | `test_interactive.py` |
 | Reset to an empty baseline | `lifecycle/reset.py` | `test_clean_reset.py`, `test_unconfigured_device.py` |
-| Image rescue: planning, compatibility, boot proof | `image/`, orchestrated by `imaging.py` | `test_image.py`, `test_image_drivers.py`, `test_bootproof.py`, `test_console_speed.py` |
+| Image rescue: planning, compatibility, boot proof | `image/`; `image/recover.py` runs the whole command | `test_image.py`, `test_image_drivers.py`, `test_bootproof.py`, `test_console_speed.py` |
 | XMODEM or transfer progress | `playbook/xmodem.py`, `playbook/transfer.py` | `test_xmodem.py` |
 | Reading model, version, serial from console text | `identify/facts.py`, `identify/probe.py` | `test_intake_replay.py` |
 | Serial, USB adapter identity, port labels | `transport/` | `test_transport.py` |
@@ -53,7 +53,7 @@ itself in a `do_*()` function.
 | `scan`, `intake`, `login` | `cli/identify.py` | `identify/probe.py`, `interactive.py` |
 | `rescue`, `health`, `archive`, `reset` | `cli/recovery.py` | `commands.py` |
 | `recover access`, `resolve` | `cli/recovery.py` | `interactive.py`, `support.py` |
-| `recover image` | `cli/image.py` | `imaging.py` |
+| `recover image` | `cli/image.py` | `image/recover.py` |
 | `lab verify`, `lab apply` | `cli/lab.py` | `labs.py` |
 | `transcript scrub`, `transcript replay` | `cli/transcript.py` | `transcript/scrub.py`, `transcript/replay.py` |
 | `console`, `capture`, `sweep` | `cli/capture.py` | `capturing.py` |
@@ -73,9 +73,10 @@ and tested without argparse.
 cli/                       argparse only: turn a command line into one call
         │
         ▼
-commands.py, imaging.py,   one do_*() per command: take the lease, open the
-interactive.py, labs.py,   journal, call the layers below, return text + exit code
-capturing.py, support.py
+commands.py, labs.py,      one do_*() per command: take the lease, open the
+interactive.py,            journal, call the layers below, return text + exit code
+support.py, capturing.py,
+image/recover.py
         │
         ├── identify/      what is this device?
         ├── lifecycle/     rescue, health, archive, reset, access recovery
@@ -127,7 +128,7 @@ The tree is being regrouped so one concept has one obvious home. It happens a
 small pull request at a time, never as one large move:
 
 - Done: `cli.py` + `cli_extra.py` became the `cli/` package.
-- `imaging.py` moves into `image/`.
+- Done: `imaging.py` became `image/recover.py`.
 - `capture.py` + `capturing.py` become a `capture/` package.
 - Later: `lifecycle/` and the top-level command modules settle into clearer
   neighbourhoods as they are next touched.

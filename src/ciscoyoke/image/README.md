@@ -11,9 +11,10 @@ it came back.
 | `drivers.py` | The per-platform commands: Catalyst bootloader versus router ROMMON. |
 | `tftp.py` | The embedded TFTP server, bound as narrowly as the job allows. |
 | `bootproof.py` | Proof that the device booted the image that was sent. |
+| `recover.py` | The `recover image` command end to end: checks, console speed, transfer, proof. |
 
-**Entry point:** `do_recover_image()` in `../imaging.py` runs the whole
-`recover image` command using the modules here. The transfer itself is in
+**Entry point:** `do_recover_image()` in `recover.py` runs the whole
+`recover image` command using the other modules here. The transfer itself is in
 `../playbook/transfer.py` and `../playbook/xmodem.py`.
 
 ## Invariants
