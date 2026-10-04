@@ -69,6 +69,59 @@ jobs:
           expect_code "0 10" ciscoyoke --json scan
           expect_code "0" ciscoyoke ports labels
 
+  install:
+    # What a user actually does: `pipx install`, then the first-run commands.
+    # The test job installs editable and discards the output, so it cannot
+    # show that the built package works, or what `doctor` says on a Mac --
+    # and nobody here owns one. Output is printed on purpose: read it in the
+    # log. No runner has a console cable, so what `ports` and `doctor` make of
+    # a real /dev/cu.* adapter still needs a person (issue #2).
+    name: pipx install / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build the wheel
+        run: python -m pip install --upgrade pip build pipx && python -m build --wheel
+
+      - name: Install it with pipx
+        shell: bash
+        run: |
+          python -m pipx install dist/*.whl
+          python -m pipx ensurepath
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: First-run commands
+        shell: bash
+        run: |
+          set -u
+          uname -a
+          show() {
+            local allowed="$1"; shift
+            echo "::group::$*"
+            set +e
+            "$@"
+            local code=$?
+            set -e
+            echo "::endgroup::"
+            case " $allowed " in
+              *" $code "*) echo "ok: $* -> $code" ;;
+              *) echo "::error::$* exited $code, expected one of: $allowed"; exit 1 ;;
+            esac
+          }
+          show "0" ciscoyoke --version
+          show "0" ciscoyoke doctor
+          show "0 10" ciscoyoke ports
+
   lint:
     name: Lint and types
     runs-on: ubuntu-latest
