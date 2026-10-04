@@ -223,6 +223,8 @@ Every option is in [docs/SAFETY.md](https://github.com/Ryan-Clinton/ciscoyoke/bl
 You don't need to write Python. Testing on hardware you own, sending a
 `ciscoyoke report`, or adding a platform profile from Cisco's documentation are
 all real contributions. See [CONTRIBUTING.md](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/CONTRIBUTING.md).
+Working on the code: the [developer map](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/DEVELOPMENT.md)
+says where each kind of change goes. Security: [SECURITY.md](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/SECURITY.md).
 
 ## Firmware
 

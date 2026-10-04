@@ -16,6 +16,12 @@ the format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   rather than checking the cable. A live prompt always outranks earlier
   failure text. (#12, @soyeladice-svg)
 - Docs: which USB console cables work, and which to avoid. (#10, @soyeladice-svg)
+- For contributors: a developer map ([docs/DEVELOPMENT.md](docs/DEVELOPMENT.md))
+  from "what I want to change" to the files and tests involved, short READMEs
+  in `stream/`, `playbook/`, `transcript/` and `image/`, a pull request
+  template, and a first-15-minutes walkthrough plus how review works in
+  CONTRIBUTING.
+- `SECURITY.md`: what never to post publicly, and how to report privately.
 
 ### Fixed (found on the bench 2950 while recording that reset)
 - The scrubber left the chassis MAC in `snmp-server engineID local ...`, where
