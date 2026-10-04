@@ -86,7 +86,11 @@ def test_an_unknown_family_is_reported_as_a_mismatch_not_silence() -> None:
 
 def test_3560_profile_does_not_claim_cx_or_x_families() -> None:
     """The cited 3560 guide must not silently claim distinct 3560 families."""
-    from ciscoyoke.platform_profiles import GENERIC_CATALYST, CATALYST_3560, catalyst_profile
+    from ciscoyoke.platform_profiles import (
+        CATALYST_3560,
+        GENERIC_CATALYST,
+        catalyst_profile,
+    )
 
     assert catalyst_profile("WS-C3560-24PS-S") is CATALYST_3560
     assert catalyst_profile("WS-C3560G-24TS-S") is CATALYST_3560
