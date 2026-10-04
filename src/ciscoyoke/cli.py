@@ -317,7 +317,10 @@ def _run(
         if args.json:
             print(Result(command, int(exc.code), {"error": str(exc)}).render())
         else:
-            print(f"error: {exc}", file=sys.stderr)
+            # Through emit, like every other human line: a refused plan carries
+            # the same decorations as an accepted one, and a bare print garbled
+            # them on a legacy Windows console.
+            emit(f"error: {exc}", stream=sys.stderr)
         return int(exc.code)
 
 

@@ -111,6 +111,10 @@ _SERIAL = re.compile(
 _MAC = re.compile(
     r"\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b|\b(?:[0-9a-f]{4}\.){2}[0-9a-f]{4}\b"
 )
+# An SNMP engine ID is built from the base MAC with no separators, so the MAC
+# sweep never sees it: a real 2950's `snmp-server engineID local ...` carried
+# the chassis MAC straight through an otherwise clean scrub.
+_ENGINE_ID = re.compile(r"(engineID\b[^\r\n]*?\s)([0-9A-Fa-f]{10,})\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +189,10 @@ def _scrub_text(text: str, counter: _Counter, addresses: dict[str, str]) -> str:
 
     def anonymise_address(match: re.Match[str]) -> str:
         original = match.group(0)
+        # A netmask or wildcard identifies nobody, and replacing one turned a
+        # real `ip address A 255.255.255.0` into two addresses.
+        if original.startswith(("255.", "0.")):
+            return original
         # Stable mapping within a transcript: the same address always becomes
         # the same placeholder, so topology remains legible without disclosing
         # the real addressing.
@@ -212,7 +220,14 @@ def _scrub_text(text: str, counter: _Counter, addresses: dict[str, str]) -> str:
         counter.identifiers += 1
         return "0000.5e00.5301" if "." in match.group(0) else "00:00:5e:00:53:01"
 
-    return _MAC.sub(anonymise_mac, text)
+    text = _MAC.sub(anonymise_mac, text)
+
+    def anonymise_engine_id(match: re.Match[str]) -> str:
+        # Cisco's enterprise prefix, then the same documentation MAC.
+        counter.identifiers += 1
+        return f"{match.group(1)}80000009030000005E005301"
+
+    return _ENGINE_ID.sub(anonymise_engine_id, text)
 
 
 def _coalesce(records: tuple[Record, ...]) -> list[Record]:

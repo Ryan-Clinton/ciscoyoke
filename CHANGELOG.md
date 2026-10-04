@@ -5,6 +5,21 @@ the format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- A fourth hardware recording: `reset` erasing a lab-only configuration on the
+  WS-C2950G-24-EI, which earns the 2950 its reset mark.
+
+### Fixed (found on the bench 2950 while recording that reset)
+- The scrubber left the chassis MAC in `snmp-server engineID local ...`, where
+  it appears without separators.
+- The scrubber replaced netmasks and wildcards as though they were addresses.
+- `reset` refused an unconfigured device waiting at the setup dialog or at
+  `Switch>`. It now declines the dialog and enables first, and still refuses
+  if the device asks for a password.
+- `rescue` had no next step for a device at the setup dialog; it now says the
+  device is usable and recommends `reset` to clear what flash may still hold.
+- Refusals printed with garbled dashes on a legacy Windows console.
+
 ## [0.1.0a1] - 2026-09-30
 
 First public alpha. Run end to end on a real Catalyst 2950; the 2960 family is

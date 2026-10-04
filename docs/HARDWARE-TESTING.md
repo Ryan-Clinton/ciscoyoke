@@ -15,17 +15,16 @@ Catalyst" claims mean "I saw a command in a manual that probably works".
 
 | Platform | Intake | Access recovery | Image rescue | Reset |
 | --- | --- | --- | --- | --- |
-| Catalyst 2950 | ● [cold boot](../tests/fixtures/hw-switch-2950-cold-boot-locked.ytx.pub) | ● [no-restore](../tests/fixtures/hw-switch-2950-recover-no-restore.ytx.pub) | — | — ¹ |
+| Catalyst 2950 | ● [cold boot](../tests/fixtures/hw-switch-2950-cold-boot-locked.ytx.pub) | ● [no-restore](../tests/fixtures/hw-switch-2950-recover-no-restore.ytx.pub) | — | ● [lab config](../tests/fixtures/hw-switch-2950-reset-lab-config.ytx.pub) ¹ |
 | Catalyst 2960 | ○ | ○ | — | ○ |
 | Catalyst 2960-S / X / Plus | ○ | ○ | — | ○ |
 | Catalyst 3550 / 3560 / 3750 | — | — ² | — | — ² |
 | Cisco 1760 | — | — | — | — |
 | Cisco 1800 / 1841 | — | — | — | — |
 
-¹ Reset has run end to end on the 2950, but its only recording read a previous
-owner's configuration into the archive before deleting it, and that
-configuration is not ours to publish. The mark waits for a reset recorded
-against a lab-only configuration.
+¹ Recorded against a made-up configuration loaded for the purpose. The first
+reset on this switch read a previous owner's configuration into the archive
+before deleting it; that recording is not ours to publish and never will be.
 
 ² No model-specific profile: these get Cisco's general procedure with longer
 waits, and destructive commands ask for `--accept-unverified`.

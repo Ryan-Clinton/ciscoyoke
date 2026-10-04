@@ -225,6 +225,15 @@ def _recommend(found: Intake, health: HealthReport) -> tuple[Recommendation, str
             "matters.",
         )
 
+    if state in (State.SETUP_DIALOG, State.AUTOINSTALL):
+        return (
+            Recommendation.RESET,
+            "The device booted with no startup configuration, so it is usable "
+            "as it stands. It can still hold a previous owner's VLAN database "
+            "or a configuration under another name in flash; reset answers the "
+            "dialog, looks, and clears what it finds.",
+        )
+
     return (
         Recommendation.INVESTIGATE,
         f"The device is at {state.value}, which has no automatic next step.",
