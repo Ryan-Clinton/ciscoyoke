@@ -406,3 +406,45 @@ def test_every_destructive_step_names_its_guard() -> None:
         for step in book.destructive_steps:
             assert step.mutation is not None
             assert step.mutation.guard == reset.ACCEPT_CONFIG_LOSS
+
+
+# -- reset answers the questions IOS actually asks ---------------------------
+
+
+def test_write_erase_expects_the_confirmation_it_will_receive() -> None:
+    """The bug: step one sent `write erase` and waited for PRIV_EXEC.
+
+    But IOS answers "Erasing the nvram filesystem will remove all files!
+    Continue? [confirm]" and will not return to the prompt until that is
+    answered -- which was step two. Both sides waited.
+    """
+    steps = {step.name: step for step in reset.router_reset().steps}
+
+    erase = steps["erase_startup_config"]
+    assert State.CONFIRM in erase.expect
+    assert State.PRIV_EXEC not in erase.expect
+
+    confirm = steps["confirm_erase"]
+    assert State.CONFIRM in confirm.require_state
+    assert State.PRIV_EXEC in confirm.expect
+
+
+def test_reload_handles_the_save_question_then_the_confirmation() -> None:
+    steps = [step.name for step in reset.router_reset().steps]
+    assert steps.index("decline_save") < steps.index("confirm_reload")
+
+    by_name = {step.name: step for step in reset.router_reset().steps}
+    assert State.SAVE_CONFIG_PROMPT in by_name["reload"].expect
+
+
+def test_deleting_vlan_dat_is_a_three_part_exchange() -> None:
+    """IOS asks for the filename, then confirms.
+
+    Blasting three carriage returns worked only if every prompt appeared in the
+    assumed order and timing, and gave no way to notice when it did not.
+    """
+    steps = {step.name: step for step in reset.switch_reset().steps}
+
+    assert State.FILENAME_PROMPT in steps["delete_vlan_database"].expect
+    assert "accept_vlan_filename" in steps
+    assert "confirm_vlan_delete" in steps

@@ -31,7 +31,9 @@ it came back.
 
 ## Tests
 
-`tests/test_image.py`, `tests/test_xmodem.py`.
+`tests/test_image.py` (planning, compatibility, the stranding rule),
+`tests/test_image_drivers.py`, `tests/test_bootproof.py`,
+`tests/test_console_speed.py`, `tests/test_xmodem.py`.
 
 ## Common change: a platform with different bootloader commands
 

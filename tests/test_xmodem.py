@@ -272,3 +272,84 @@ def test_send_file_reads_from_disk(tmp_path: Path) -> None:
         path, receiver.read, receiver.write, clock=clock, sleep=clock.sleep
     )
     assert outcome.complete is True
+
+
+# -- the end of a transfer must be acknowledged ------------------------------
+
+
+def test_an_unacknowledged_eot_is_not_success() -> None:
+    """The bug: the EOT response was read and discarded.
+
+    Every block acknowledged but the receiver silent at the end meant the
+    device never confirmed it wrote the file -- and after ninety minutes, on a
+    box whose only image was replaced, optimism is the wrong default.
+    """
+    clock = Clock()
+    receiver = Receiver(responses=acks(1))
+
+    with pytest.raises(XmodemError, match="never acknowledged the end"):
+        send(
+            b"hello",
+            receiver.read,
+            receiver.write,
+            max_retries=3,
+            block_timeout=1.0,
+            clock=clock,
+            sleep=clock.sleep,
+        )
+
+
+def test_the_classic_eot_nak_eot_ack_exchange_is_accepted() -> None:
+    """Several receivers NAK the first EOT and acknowledge the second."""
+    clock = Clock()
+    receiver = Receiver(responses=[Control.ACK, Control.NAK, Control.ACK])
+
+    outcome = send(
+        b"hello",
+        receiver.read,
+        receiver.write,
+        block_timeout=1.0,
+        clock=clock,
+        sleep=clock.sleep,
+    )
+    assert outcome.complete is True
+
+
+def test_cancellation_at_the_end_says_the_image_is_incomplete() -> None:
+    clock = Clock()
+    receiver = Receiver(responses=[Control.ACK, Control.CAN])
+
+    with pytest.raises(XmodemCancelledError, match="incomplete"):
+        send(
+            b"hello",
+            receiver.read,
+            receiver.write,
+            block_timeout=1.0,
+            clock=clock,
+            sleep=clock.sleep,
+        )
+
+
+def test_progress_is_reported_to_the_caller() -> None:
+    """The product insight was 'do not leave someone staring at nothing'.
+
+    The reporter was accepted and then dropped, which turned it back into
+    exactly that.
+    """
+    clock = Clock()
+    payload = b"x" * (BLOCK_SIZE * 4)
+    receiver = Receiver(responses=acks(5))
+
+    seen: list[int] = []
+    send(
+        payload,
+        receiver.read,
+        receiver.write,
+        progress=lambda sent, _total: seen.append(sent),
+        block_timeout=1.0,
+        clock=clock,
+        sleep=clock.sleep,
+    )
+
+    assert len(seen) == 4
+    assert seen[-1] == len(payload)
