@@ -66,7 +66,7 @@ ok   fixture safety (no raw transcripts committed)
 ```
 
 Then make one harmless change to see the loop work. In `cmd_doctor` in
-`src/ciscoyoke/cli.py`, change the heading `"Host diagnostics"` to anything you
+`src/ciscoyoke/cli/doctor.py`, change the heading `"Host diagnostics"` to anything you
 like and run:
 
 ```bash

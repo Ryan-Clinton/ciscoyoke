@@ -12,7 +12,8 @@ import io
 
 import pytest
 
-from ciscoyoke import cli, commands
+from ciscoyoke import commands
+from ciscoyoke.cli.common import guard
 from ciscoyoke.lifecycle.rescue import Recommendation, rescue
 from ciscoyoke.result.exits import ExitCode
 from ciscoyoke.session import Session
@@ -106,7 +107,7 @@ def test_a_refusal_survives_a_console_that_cannot_encode_it(
             "PLAN — reset_switch", ExitCode.DESTRUCTIVE_ACTION_REFUSED
         )
 
-    code = cli._run(refuse, argparse.Namespace(json=False), "reset")
+    code = guard(refuse, argparse.Namespace(json=False), "reset")
 
     assert code == int(ExitCode.DESTRUCTIVE_ACTION_REFUSED)
     shown = raw.getvalue().decode("utf-8")
