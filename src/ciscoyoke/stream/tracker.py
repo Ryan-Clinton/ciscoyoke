@@ -34,6 +34,8 @@ class State(StrEnum):
     UNKNOWN = "unknown"
     SILENT = "silent"
     BOOTING = "booting"
+    SELF_TEST_FAILURE = "self_test_failure"
+    """The device reports a fatal POST or memory self-test failure."""
     ROMMON = "rommon"
     BOOTLOADER = "bootloader"
     SETUP_DIALOG = "setup_dialog"
@@ -234,6 +236,15 @@ class StateTracker:
                 return self._resolve_password(anchored)
             state = _DIRECT[anchored.kind]
             return Observation(state, Basis.OBSERVED, Confidence.HIGH, (anchored,))
+
+        self_test_failure = by_kind.get(SignalKind.SELF_TEST_FAILURE)
+        if self_test_failure is not None:
+            return Observation(
+                State.SELF_TEST_FAILURE,
+                Basis.OBSERVED,
+                Confidence.HIGH,
+                (self_test_failure,),
+            )
 
         # No prompt: the device is mid-sentence. Boot output is still a useful
         # conclusion, but it is weaker than sitting at a prompt -- output can

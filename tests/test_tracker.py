@@ -39,6 +39,21 @@ def test_prompts_resolve_to_states(stream: bytes, expected: State) -> None:
     assert tracker.current.basis is Basis.OBSERVED
 
 
+def test_fatal_memory_self_test_is_a_conclusive_state() -> None:
+    tracker = StateTracker()
+    tracker.feed(
+        b"System Bootstrap, Version 12.3(8r)YH6, RELEASE SOFTWARE (fc1)\r\n"
+        b"Failed all 0x00000000 test\r\n"
+        b"Bad RAM at location 0x80000000: wrote 0x00000000, read 0xFFFF0000\r\n"
+        b"DDR memory test failed.  Resetting the router ...\r\n"
+    )
+
+    assert tracker.current.state is State.SELF_TEST_FAILURE
+    assert tracker.current.basis is Basis.OBSERVED
+    assert tracker.current.confidence is Confidence.HIGH
+    assert tracker.current.evidence[0].kind is SignalKind.SELF_TEST_FAILURE
+
+
 def test_config_prompt_beats_priv_exec() -> None:
     """``Router(config)#`` also satisfies the priv-exec pattern.
 
@@ -140,3 +155,25 @@ def test_buffer_decodes_high_bytes_without_raising() -> None:
     buffer = StreamBuffer()
     buffer.feed(b"\xff\xfe garbage \x00")
     assert len(buffer.text) == len(buffer.raw)
+
+
+@pytest.mark.parametrize(
+    ("suffix", "expected"),
+    [
+        (b"System Bootstrap, Version 12.3\r\n\r\nrommon 1 > ", State.ROMMON),
+        (b"\r\nRouter>", State.USER_EXEC),
+        (b"\r\nRouter#show log\r\n%SYS-3: memory test failed on slot 1\r\nRouter#", State.PRIV_EXEC),
+    ],
+)
+def test_prompt_outranks_prior_self_test_failure(suffix: bytes, expected: State) -> None:
+    """A live anchored prompt is stronger evidence than earlier boot/log text."""
+    failure = (
+        b"Failed all 0x00000000 test\r\n"
+        b"Bad RAM at location 0x80000000\r\n"
+        b"DDR memory test failed. Resetting the router ...\r\n"
+    )
+    tracker = StateTracker()
+    tracker.feed(failure + suffix)
+    assert tracker.current.state is expected
+    assert tracker.current.basis is Basis.OBSERVED
+    assert tracker.current.confidence is Confidence.HIGH

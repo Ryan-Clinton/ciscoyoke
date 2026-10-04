@@ -20,14 +20,19 @@ from enum import StrEnum
 
 from ciscoyoke.identify.facts import DeviceFacts
 
-_POST_FAIL = re.compile(r"POST:.*?(fail|error)", re.IGNORECASE)
+_POST_FAIL = re.compile(
+    r"(POST:.*?(?:fail|error)|Failed all 0x[0-9A-Fa-f]+ test)",
+    re.IGNORECASE,
+)
 _POST_PASS = re.compile(r"POST:.*?(pass|ok)", re.IGNORECASE)
 _FLASH_ERROR = re.compile(
     r"(flashfs\[\d+\]:.*?error|Error initializing flash|bad sectors?)",
     re.IGNORECASE,
 )
 _MEMORY_ERROR = re.compile(
-    r"(memory (?:test )?(?:failure|error)|parity error|ECC error)", re.IGNORECASE
+    r"(memory (?:test )?(?:failure|failed|error)|Bad RAM at location|"
+    r"parity error|ECC error)",
+    re.IGNORECASE,
 )
 _ENV_ALARM = re.compile(
     r"(fan.*?(fail|not rotating)|temperature.*?(alarm|critical)|"
