@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
-from ciscoyoke.stream.buffer import StreamBuffer
+from ciscoyoke.stream.buffer import TAIL_WINDOW, StreamBuffer
 from ciscoyoke.stream.signals import SignalKind, detect, first_anchored
 from ciscoyoke.stream.tracker import Basis, Confidence, State, StateTracker
+from ciscoyoke.transcript.fake import chunked
 
 
 @pytest.mark.parametrize(
@@ -177,3 +180,96 @@ def test_prompt_outranks_prior_self_test_failure(suffix: bytes, expected: State)
     assert tracker.current.state is expected
     assert tracker.current.basis is Basis.OBSERVED
     assert tracker.current.confidence is Confidence.HIGH
+
+
+# -- the destructive guard latches -------------------------------------------
+
+WARNING = b"WARNING: PASSWORD RECOVERY FUNCTIONALITY IS DISABLED\r\n"
+
+
+def test_the_guard_survives_output_longer_than_the_detector_window() -> None:
+    """The bug: the guard was re-derived from a bounded tail every byte.
+
+    Detection reads the last TAIL_WINDOW characters, so once the device emitted
+    more than that after the banner, the warning scrolled out of view and the
+    guard silently lifted -- at exactly the point a destructive step was about
+    to run. The banner is a fact about the device, not about the last 512
+    bytes.
+    """
+    tracker = StateTracker()
+    tracker.feed(WARNING)
+    assert tracker.current.state is State.DESTRUCTIVE_RECOVERY_GUARD
+
+    # Far more output than the detector can see at once, ending at a prompt
+    # that would otherwise be read as a perfectly ordinary bootloader.
+    tracker.feed(b"." * (TAIL_WINDOW * 4))
+    tracker.feed(b"\r\nswitch: ")
+
+    assert tracker.current.state is State.DESTRUCTIVE_RECOVERY_GUARD
+    assert tracker.recovery_guard_latched is True
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    filler=st.integers(min_value=0, max_value=4000),
+    splits=st.lists(st.integers(min_value=1, max_value=500), max_size=12),
+)
+def test_the_guard_survives_any_amount_of_later_output(
+    filler: int, splits: list[int]
+) -> None:
+    """Chunking was already property-tested; trailing *volume* was not.
+
+    That gap is why the original test passed while the invariant was broken:
+    both signals sat inside one window.
+    """
+    stream = WARNING + (b"x" * filler) + b"\r\nRouter#"
+    tracker = StateTracker()
+    for piece in chunked(stream, splits):
+        tracker.feed(piece)
+
+    assert tracker.current.state is State.DESTRUCTIVE_RECOVERY_GUARD
+
+
+def test_clearing_the_guard_is_deliberate_and_needs_a_reason() -> None:
+    """Nothing in the byte stream can release it."""
+    tracker = StateTracker()
+    tracker.feed(WARNING)
+
+    with pytest.raises(ValueError, match="requires a reason"):
+        tracker.clear_recovery_guard("")
+
+    tracker.clear_recovery_guard("device power-cycled and rebooted without the banner")
+    tracker.feed(b"\r\nswitch: ")
+    assert tracker.current.state is State.BOOTLOADER
+
+
+def test_a_fresh_tracker_starts_unlatched() -> None:
+    assert StateTracker().recovery_guard_latched is False
+
+
+# -- the questions IOS asks during a reset -----------------------------------
+
+
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        (
+            b"Erasing the nvram filesystem will remove all files! "
+            b"Continue? [confirm]",
+            State.CONFIRM,
+        ),
+        (
+            b"System configuration has been modified. Save? [yes/no]: ",
+            State.SAVE_CONFIG_PROMPT,
+        ),
+        (b"Delete filename [vlan.dat]? ", State.FILENAME_PROMPT),
+        (b"Delete flash:vlan.dat? [confirm]", State.CONFIRM),
+        (b"Proceed with reload? [confirm]", State.CONFIRM),
+    ],
+)
+def test_the_real_prompt_shapes_are_recognised(
+    output: bytes, expected: State
+) -> None:
+    tracker = StateTracker()
+    tracker.feed(output)
+    assert tracker.current.state is expected

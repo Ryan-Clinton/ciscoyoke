@@ -392,3 +392,20 @@ def test_accept_stranded_risk_guard_is_named() -> None:
 
 def test_facts_helper_is_available() -> None:
     assert isinstance(unknown_facts(), DeviceFacts)
+
+
+def test_progress_without_elapsed_time_cannot_estimate() -> None:
+    """The frozen-clock bug: rate and ETA had nothing to work from.
+
+    The display would have sat on "estimating..." for the whole transfer, which
+    is the experience the reporting exists to prevent.
+    """
+    frozen = Progress(total_bytes=1_000_000, sent_bytes=500_000, started_at=0.0, now=0.0)
+    assert frozen.remaining is None
+    assert "estimating" in frozen.render()
+
+    moving = Progress(
+        total_bytes=1_000_000, sent_bytes=500_000, started_at=0.0, now=60.0
+    )
+    assert moving.remaining is not None
+    assert "min left" in moving.render()

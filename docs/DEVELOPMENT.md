@@ -18,7 +18,7 @@ Setup and the one command that says a change is ready are in
 | Password recovery steps | `playbook/ios_switch.py`, `playbook/ios_router.py`; chosen by `lifecycle/recover.py` | `test_switch_recovery.py`, `test_playbook.py` |
 | Steps a person performs (hold Mode, power-cycle) | `playbook/human.py`, driven by `interactive.py` | `test_interactive.py` |
 | Reset to an empty baseline | `lifecycle/reset.py` | `test_clean_reset.py`, `test_unconfigured_device.py` |
-| Image rescue: planning, compatibility, boot proof | `image/`, orchestrated by `imaging.py` | `test_image.py` |
+| Image rescue: planning, compatibility, boot proof | `image/`, orchestrated by `imaging.py` | `test_image.py`, `test_image_drivers.py`, `test_bootproof.py`, `test_console_speed.py` |
 | XMODEM or transfer progress | `playbook/xmodem.py`, `playbook/transfer.py` | `test_xmodem.py` |
 | Reading model, version, serial from console text | `identify/facts.py`, `identify/probe.py` | `test_intake_replay.py` |
 | Serial, USB adapter identity, port labels | `transport/` | `test_transport.py` |
