@@ -50,9 +50,20 @@ git clone https://github.com/Ryan-Clinton/ciscoyoke
 cd ciscoyoke
 python -m venv .venv
 .venv/bin/pip install -e ".[dev]"        # Windows: .venv\Scripts\pip
-.venv/bin/pytest                          # no hardware needed
-.venv/bin/ruff check src tests && .venv/bin/mypy
+.venv/bin/python tools/check.py           # Windows: .venv\Scripts\python
 ```
+
+`tools/check.py` is the one command that says a change is ready. It runs ruff,
+mypy, the test suite and the raw-recording check, and CI runs the same script:
+
+```text
+ok   ruff
+ok   mypy
+ok   pytest (429 passed in 41s)
+ok   fixture safety (no raw transcripts committed)
+```
+
+`python tools/check.py test` (or `lint`, `types`, `fixtures`) runs one part.
 
 The suite runs against recorded device behaviour, so nothing needs to be plugged
 in. A change to how the tool reads a console should come with a test built from

@@ -31,6 +31,8 @@ the format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   bind UDP/69. Found by the new pipx install check on a macOS runner.
 
 ### Changed
+- `python tools/check.py` is the one command that says a change is ready: ruff,
+  mypy, the tests and the raw-recording check. CI runs the same script.
 - CI now builds the wheel, installs it with `pipx` on Linux, Windows and macOS,
   and prints what the first-run commands say.
 
