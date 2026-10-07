@@ -218,6 +218,30 @@ More: [docs/SAFETY.md](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/
 
 Every option is in [docs/SAFETY.md](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/SAFETY.md) and `ciscoyoke <command> --help`.
 
+### Shell completion
+
+Tab completion for all subcommands and flags uses [`argcomplete`](https://kislyuk.github.io/argcomplete/) via the optional `completion` extra:
+
+```bash
+pipx install "ciscoyoke[completion]"
+```
+
+Enable it in your shell profile:
+
+- **bash** (`~/.bashrc`):
+  ```bash
+  eval "$(register-python-argcomplete ciscoyoke)"
+  ```
+- **zsh** (`~/.zshrc`):
+  ```zsh
+  autoload -U bashcompinit && bashcompinit
+  eval "$(register-python-argcomplete ciscoyoke)"
+  ```
+- **PowerShell** (`$PROFILE`):
+  ```powershell
+  register-python-argcomplete --shell powershell ciscoyoke | Out-String | Invoke-Expression
+  ```
+
 ## Contributing
 
 You don't need to write Python. Testing on hardware you own, sending a
@@ -225,6 +249,7 @@ You don't need to write Python. Testing on hardware you own, sending a
 all real contributions. See [CONTRIBUTING.md](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/CONTRIBUTING.md).
 Working on the code: the [developer map](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/DEVELOPMENT.md)
 says where each kind of change goes. Security: [SECURITY.md](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/SECURITY.md).
+
 
 ## Firmware
 

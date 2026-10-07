@@ -226,3 +226,38 @@ def test_unknown_finding_explains_why() -> None:
     assert payload["value"] is None
     assert payload["basis"] == Basis.UNKNOWN.value
     assert "credentials" in payload["reason"]
+
+
+def test_cli_carries_argcomplete_marker_and_hooks_parser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shell completion activates when argcomplete is installed and degrades cleanly without it."""
+    import builtins
+    import sys
+    from types import ModuleType
+
+    import ciscoyoke.cli as cli_mod
+
+    cli_source = Path(cli_mod.__file__).read_text(encoding="utf-8")
+    assert "# PYTHON_ARGCOMPLETE_OK" in cli_source.splitlines()[:5]
+
+    parser = cli_mod.build_parser()
+    called_with: list[object] = []
+    fake_argcomplete = ModuleType("argcomplete")
+    fake_argcomplete.autocomplete = lambda p: called_with.append(p)  # type: ignore[attr-defined]
+
+    monkeypatch.setitem(sys.modules, "argcomplete", fake_argcomplete)
+    cli_mod._enable_completion(parser)
+    assert called_with == [parser]
+
+    monkeypatch.delitem(sys.modules, "argcomplete", raising=False)
+    real_import = builtins.__import__
+
+    def _no_argcomplete(name: str, *args: object, **kwargs: object) -> object:
+        if name == "argcomplete":
+            raise ImportError("No module named 'argcomplete'")
+        return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(builtins, "__import__", _no_argcomplete)
+    cli_mod._enable_completion(parser)
+
