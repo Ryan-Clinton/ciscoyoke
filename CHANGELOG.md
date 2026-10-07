@@ -16,6 +16,9 @@ the format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   rather than checking the cable. A live prompt always outranks earlier
   failure text. (#12, @soyeladice-svg)
 - Docs: which USB console cables work, and which to avoid. (#10, @soyeladice-svg)
+- Optional tab completion for every subcommand and flag, in bash, zsh and
+  PowerShell: `pipx install "ciscoyoke[completion]"`. Without the extra the
+  CLI behaves exactly as before. (#9, @DYNOSuprovo)
 - For contributors: a developer map ([docs/DEVELOPMENT.md](docs/DEVELOPMENT.md))
   from "what I want to change" to the files and tests involved, short READMEs
   in `stream/`, `playbook/`, `transcript/` and `image/`, a pull request

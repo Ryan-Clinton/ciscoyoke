@@ -250,7 +250,6 @@ all real contributions. See [CONTRIBUTING.md](https://github.com/Ryan-Clinton/ci
 Working on the code: the [developer map](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/docs/DEVELOPMENT.md)
 says where each kind of change goes. Security: [SECURITY.md](https://github.com/Ryan-Clinton/ciscoyoke/blob/main/SECURITY.md).
 
-
 ## Firmware
 
 ciscoyoke **never hosts, mirrors, searches for or redistributes Cisco IOS
