@@ -55,4 +55,3 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     handler = args.handler
     return int(handler(args))
-

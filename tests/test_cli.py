@@ -260,4 +260,3 @@ def test_cli_carries_argcomplete_marker_and_hooks_parser(
 
     monkeypatch.setattr(builtins, "__import__", _no_argcomplete)
     cli_mod._enable_completion(parser)
-
